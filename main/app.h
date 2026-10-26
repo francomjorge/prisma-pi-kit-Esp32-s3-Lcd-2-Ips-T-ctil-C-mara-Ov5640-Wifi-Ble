@@ -3,14 +3,15 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "esp_err.h"
-#define APP_BUILD "006.0"
+#define APP_BUILD "007.0"
+#define APP_PRODUCT "PRISMA-PI CAMERA"
 extern char app_ssid[32], app_password[16];
 extern bool network_ready,stream_server_ready;
 extern uint16_t stream_clients,stream_fps;
 extern uint32_t stream_frames,stream_bytes,stream_frame_ms;
 extern char stream_error[64];
 extern bool camera_probed,camera_ready,camera_expected;
-extern uint16_t camera_pid;
+extern uint16_t camera_pid,camera_rotation;
 extern uint8_t camera_midh,camera_midl,camera_ver;
 extern char camera_sensor_name[24],camera_error[64];
 extern bool camera_capture_attempted,camera_capture_ready;
@@ -24,7 +25,7 @@ extern char camera_preview_error[64];
 extern uint8_t camera_jpeg_quality,camera_fb_count;
 extern char camera_grab_mode[16];
 extern uint32_t ui_preview_display_ms,ui_preview_loop_ms,touch_taps,touch_swipes,touch_rejected;
-extern uint16_t ui_preview_fps,touch_poll_ms,touch_swipe_threshold_px,touch_debounce_ms,touch_confirm_samples;
+extern uint16_t ui_preview_fps,ui_preview_target_fps,touch_poll_ms,touch_swipe_threshold_px,touch_debounce_ms,touch_confirm_samples;
 esp_err_t display_start(void);
 bool display_ready(void);
 bool touch_ready(void);
