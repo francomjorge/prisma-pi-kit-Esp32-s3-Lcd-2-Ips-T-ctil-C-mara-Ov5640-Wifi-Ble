@@ -6,6 +6,7 @@
 
 #define PRISMA_SETTINGS_SCHEMA 1
 #define PRISMA_SCAN_MAX 16
+#define PRISMA_STORAGE_MAX_OPEN_FILES 12
 
 typedef struct {
     uint32_t schema;
@@ -74,12 +75,44 @@ typedef struct {
     char error[64];
 } touch_hw_state_t;
 
+typedef struct {
+    bool available;
+    bool mounted;
+    bool writable;
+    char id[12];
+    char fs[16];
+    char mount[16];
+    uint64_t total_bytes;
+    uint64_t used_bytes;
+    uint64_t free_bytes;
+    uint32_t max_open_files;
+    char error[80];
+} storage_volume_state_t;
+
+typedef struct {
+    bool shared_spi_ready;
+    storage_volume_state_t internal;
+    storage_volume_state_t sd;
+} storage_state_t;
+
 esp_err_t settings_start(void);
 void settings_get(prisma_settings_t *out);
 esp_err_t settings_set_identity(const char *friendly_name, const char *hostname);
 esp_err_t settings_set_ap(const char *ssid, bool open, const char *password, uint8_t channel, uint8_t max_clients);
 esp_err_t settings_set_sta(const char *ssid, const char *password, bool enabled);
 esp_err_t settings_clear_sta(void);
+
+esp_err_t board_spi_start(void);
+bool board_spi_ready(void);
+
+esp_err_t storage_start(void);
+void storage_get_state(storage_state_t *out);
+esp_err_t storage_internal_initialize(void);
+esp_err_t storage_sd_retry(void);
+const char *storage_volume_root(const char *volume);
+bool storage_volume_mounted(const char *volume);
+bool storage_lock(uint32_t timeout_ms);
+void storage_unlock(void);
 
 esp_err_t display_start(void);
 bool display_ready(void);

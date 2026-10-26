@@ -17,8 +17,10 @@
 #include "app.h"
 #include "identity.h"
 
-static const char *TAG = "CS004_WEB";
+static const char *TAG = "CS005_WEB";
 static httpd_handle_t s_server;
+
+esp_err_t files_web_register(httpd_handle_t server);
 
 extern const char home_start[] asm("_binary_home_html_start");
 extern const char home_end[] asm("_binary_home_html_end");
@@ -98,6 +100,7 @@ static esp_err_t read_body(httpd_req_t *req, char *buf, size_t cap)
     int total = 0;
     while (total < req->content_len) {
         int n = httpd_req_recv(req, buf + total, req->content_len - total);
+        if (n == HTTPD_SOCK_ERR_TIMEOUT) continue;
         if (n <= 0) return ESP_FAIL;
         total += n;
     }
@@ -150,8 +153,8 @@ static const char *reset_reason_name(esp_reset_reason_t r)
 
 static esp_err_t status_get(httpd_req_t *req)
 {
-    network_state_t net={0}; discovery_state_t d={0}; camera_hw_state_t cam={0}; touch_hw_state_t touch={0}; prisma_settings_t cfg={0};
-    network_get_state(&net); discovery_get_state(&d); camera_hw_get_state(&cam); touch_hw_get_state(&touch); settings_get(&cfg);
+    network_state_t net={0}; discovery_state_t d={0}; camera_hw_state_t cam={0}; touch_hw_state_t touch={0}; prisma_settings_t cfg={0}; storage_state_t storage={0};
+    network_get_state(&net); discovery_get_state(&d); camera_hw_get_state(&cam); touch_hw_get_state(&touch); settings_get(&cfg); storage_get_state(&storage);
     esp_chip_info_t chip={0}; esp_chip_info(&chip);
     uint32_t flash_bytes=0; bool flash_ok=esp_flash_get_size(NULL,&flash_bytes)==ESP_OK;
     size_t psram_total=heap_caps_get_total_size(MALLOC_CAP_SPIRAM), psram_free=heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
@@ -160,28 +163,30 @@ static esp_err_t status_get(httpd_req_t *req)
     esp_reset_reason_t reset = esp_reset_reason();
     bool healthy=display_ready()&&net.ready&&cam.ready;
     char sta_mac[18], ap_mac[18]; mac_text(ESP_MAC_WIFI_STA,sta_mac); mac_text(ESP_MAC_WIFI_SOFTAP,ap_mac);
-    const esp_partition_t *spiffs = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "spiffs");
     const esp_partition_t *ota0 = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
     const esp_partition_t *ota1 = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, NULL);
     char friend_e[80], host_e[80], ap_e[80], sta_e[80];
     json_escape(cfg.friendly_name,friend_e,sizeof(friend_e)); json_escape(cfg.hostname,host_e,sizeof(host_e));
     json_escape(net.ssid,ap_e,sizeof(ap_e)); json_escape(net.sta_ssid,sta_e,sizeof(sta_e));
-    char json[5600];
+    char int_err[120], sd_err[120]; json_escape(storage.internal.error,int_err,sizeof(int_err)); json_escape(storage.sd.error,sd_err,sizeof(sd_err));
+    char json[7600];
     int n=snprintf(json,sizeof(json),
       "{\"schema\":\"prisma.status.v1\",\"product\":\"%s\",\"application\":\"%s\",\"vendor\":\"%s\",\"firmware\":\"%s\",\"build\":\"%s\",\"friendly_name\":\"%s\",\"hostname\":\"%s\",\"mdns_url\":\"%s\",\"settings_schema\":%u,\"uptime_s\":%" PRId64 ",\"reset_reason\":\"%s\",\"health\":\"%s\","
       "\"device\":{\"model\":\"ESP32-S3\",\"cores\":%d,\"revision\":%d,\"flash_bytes\":%" PRIu32 ",\"flash_read_ok\":%s,\"wifi_sta_mac\":\"%s\",\"wifi_ap_mac\":\"%s\"},"
       "\"memory\":{\"heap_free\":%" PRIu32 ",\"heap_min\":%" PRIu32 ",\"psram_total\":%u,\"psram_free\":%u},"
-      "\"storage\":{\"spiffs_partition\":%s,\"spiffs_bytes\":%u,\"mounted\":false,\"ota0\":%s,\"ota1\":%s},"
+      "\"storage\":{\"shared_spi_ready\":%s,\"internal\":{\"mounted\":%s,\"fs\":\"%s\",\"total_bytes\":%llu,\"used_bytes\":%llu,\"free_bytes\":%llu,\"max_open_files\":%u,\"error\":\"%s\"},\"sd\":{\"mounted\":%s,\"fs\":\"%s\",\"total_bytes\":%llu,\"used_bytes\":%llu,\"free_bytes\":%llu,\"max_open_files\":%u,\"error\":\"%s\"},\"file_count_quota\":false,\"ota0\":%s,\"ota1\":%s},"
       "\"display\":{\"available\":true,\"enabled\":%s,\"state\":\"%s\",\"controller\":\"ST7789\",\"width\":240,\"height\":320,\"spi_hz\":40000000,\"pins\":{\"sclk\":39,\"mosi\":38,\"miso\":40,\"dc\":42,\"cs\":45,\"backlight\":1}},"
       "\"softap\":{\"available\":true,\"enabled\":%s,\"open\":%s,\"security\":\"%s\",\"ssid\":\"%s\",\"ip\":\"%s\",\"clients\":%u,\"channel\":%u,\"max_clients\":%u},"
       "\"sta\":{\"available\":true,\"configured\":%s,\"connected\":%s,\"ssid\":\"%s\",\"ip\":\"%s\",\"rssi\":%d},"
       "\"mdns\":{\"available\":true,\"enabled\":%s,\"state\":\"%s\",\"hostname\":\"%s\",\"url\":\"%s\"},"
       "\"camera\":{\"available\":true,\"probed\":%s,\"enabled\":%s,\"state\":\"%s\",\"sensor\":\"%s\",\"expected_sensor\":%s,\"pid\":%u,\"pid_hex\":\"0x%04X\",\"midh\":%u,\"midl\":%u,\"ver\":%u,\"xclk_hz\":%u,\"fb_count\":%u,\"fb_location\":\"%s\",\"capture_enabled\":false,\"pins\":{\"pwdn\":17,\"xclk\":8,\"sccb_sda\":21,\"sccb_scl\":16,\"pclk\":9,\"vsync\":6,\"href\":4},\"error\":\"%s\"},"
       "\"touch\":{\"available\":true,\"probed\":%s,\"enabled\":false,\"state\":\"%s\",\"controller\":\"%s\",\"address\":%u,\"chip_id\":%u,\"chip_id_hex\":\"0x%02X\",\"sda\":48,\"scl\":47,\"gestures_enabled\":false,\"error\":\"%s\"},"
-      "\"stream\":{\"available\":false,\"enabled\":false,\"state\":\"planned_after_admin\"},\"esp_now\":{\"available\":false,\"enabled\":false,\"state\":\"planned\"},\"ble\":{\"available\":false,\"enabled\":false,\"state\":\"planned\"}}",
+      "\"stream\":{\"available\":false,\"enabled\":false,\"state\":\"deferred_until_platform_ready\"},\"esp_now\":{\"available\":false,\"enabled\":false,\"state\":\"planned\"},\"ble\":{\"available\":false,\"enabled\":false,\"state\":\"planned\"}}",
       PRISMA_PRODUCT,PRISMA_APPLICATION,PRISMA_VENDOR,PRISMA_FIRMWARE_VERSION,PRISMA_BUILD_ID,friend_e,host_e,d.url,(unsigned)cfg.schema,uptime_s,reset_reason_name(reset),healthy?"ready":"degraded",
       chip.cores,chip.revision,flash_bytes,flash_ok?"true":"false",sta_mac,ap_mac,heap_free,heap_min,(unsigned)psram_total,(unsigned)psram_free,
-      spiffs?"true":"false",spiffs?(unsigned)spiffs->size:0,ota0?"true":"false",ota1?"true":"false",
+      storage.shared_spi_ready?"true":"false",
+      storage.internal.mounted?"true":"false",storage.internal.fs,(unsigned long long)storage.internal.total_bytes,(unsigned long long)storage.internal.used_bytes,(unsigned long long)storage.internal.free_bytes,storage.internal.max_open_files,int_err,
+      storage.sd.mounted?"true":"false",storage.sd.fs,(unsigned long long)storage.sd.total_bytes,(unsigned long long)storage.sd.used_bytes,(unsigned long long)storage.sd.free_bytes,storage.sd.max_open_files,sd_err,ota0?"true":"false",ota1?"true":"false",
       display_ready()?"true":"false",display_ready()?"ready":"error",
       net.ready?"true":"false",net.open?"true":"false",net.open?"OPEN":"WPA2-PSK",ap_e,net.ip,net.clients,net.channel,net.max_clients,
       net.sta_configured?"true":"false",net.sta_connected?"true":"false",sta_e,net.sta_ip,net.sta_rssi,
@@ -265,9 +270,10 @@ static esp_err_t reboot_post(httpd_req_t *req)
 
 static esp_err_t capabilities_get(httpd_req_t *req)
 {
-    network_state_t net={0}; discovery_state_t d={0}; camera_hw_state_t cam={0}; touch_hw_state_t touch={0};
-    network_get_state(&net); discovery_get_state(&d); camera_hw_get_state(&cam); touch_hw_get_state(&touch);
-    char json[3200];
+    network_state_t net={0}; discovery_state_t d={0}; camera_hw_state_t cam={0}; touch_hw_state_t touch={0}; storage_state_t storage={0};
+    network_get_state(&net); discovery_get_state(&d); camera_hw_get_state(&cam); touch_hw_get_state(&touch); storage_get_state(&storage);
+    bool files = storage.internal.mounted || storage.sd.mounted;
+    char json[3800];
     int n=snprintf(json,sizeof(json),
       "{\"schema\":\"prisma.capabilities.v1\",\"product\":\"%s\",\"capabilities\":["
       "{\"id\":\"settings\",\"available\":true,\"enabled\":true,\"state\":\"persistent_nvs\"},"
@@ -276,14 +282,26 @@ static esp_err_t capabilities_get(httpd_req_t *req)
       "{\"id\":\"wifi_sta\",\"available\":true,\"enabled\":%s,\"state\":\"%s\"},"
       "{\"id\":\"http\",\"available\":true,\"enabled\":true,\"state\":\"ready\"},"
       "{\"id\":\"mdns\",\"available\":true,\"enabled\":%s,\"state\":\"%s\"},"
+      "{\"id\":\"internal_storage\",\"available\":true,\"enabled\":%s,\"state\":\"%s\"},"
+      "{\"id\":\"sd_storage\",\"available\":true,\"enabled\":%s,\"state\":\"%s\"},"
+      "{\"id\":\"file_browser\",\"available\":true,\"enabled\":%s,\"state\":\"%s\"},"
       "{\"id\":\"camera_hw\",\"available\":true,\"enabled\":%s,\"state\":\"%s\"},"
       "{\"id\":\"touch_hw\",\"available\":true,\"enabled\":%s,\"state\":\"%s\"},"
-      "{\"id\":\"snapshot\",\"available\":false,\"enabled\":false,\"state\":\"deferred_until_admin_validated\"},"
+      "{\"id\":\"snapshot\",\"available\":false,\"enabled\":false,\"state\":\"deferred_until_platform_validated\"},"
       "{\"id\":\"stream\",\"available\":false,\"enabled\":false,\"state\":\"deferred\"},"
       "{\"id\":\"esp_now\",\"available\":false,\"enabled\":false,\"state\":\"planned\"},"
       "{\"id\":\"ble\",\"available\":false,\"enabled\":false,\"state\":\"planned\"},"
       "{\"id\":\"ota\",\"available\":false,\"enabled\":false,\"state\":\"planned\"}]}",
-      PRISMA_PRODUCT,display_ready()?"true":"false",display_ready()?"ready":"error",net.ready?"true":"false",net.ready?"ready":"error",net.sta_configured?"true":"false",net.sta_connected?"connected":"configured",d.ready?"true":"false",d.ready?"ready":"error",cam.ready?"true":"false",cam.ready?"ready":"error",touch.ready?"true":"false",touch.ready?"ready":"error");
+      PRISMA_PRODUCT,
+      display_ready()?"true":"false",display_ready()?"ready":"error",
+      net.ready?"true":"false",net.ready?"ready":"error",
+      net.sta_configured?"true":"false",net.sta_connected?"connected":"available",
+      d.ready?"true":"false",d.ready?"ready":"error",
+      storage.internal.mounted?"true":"false",storage.internal.mounted?"mounted":"unavailable",
+      storage.sd.mounted?"true":"false",storage.sd.mounted?"mounted":"unavailable",
+      files?"true":"false",files?"ready":"no_mounted_volume",
+      cam.ready?"true":"false",cam.ready?"ready":"error",
+      touch.ready?"true":"false",touch.ready?"ready":"error");
     if(n<0||n>=(int)sizeof(json))return httpd_resp_send_err(req,HTTPD_500_INTERNAL_SERVER_ERROR,"capabilities overflow");
     return send_json(req,json);
 }
@@ -291,7 +309,11 @@ static esp_err_t capabilities_get(httpd_req_t *req)
 esp_err_t web_start(void)
 {
     if(s_server)return ESP_OK;
-    httpd_config_t cfg=HTTPD_DEFAULT_CONFIG(); cfg.stack_size=10240; cfg.max_uri_handlers=16; cfg.max_open_sockets=7; cfg.lru_purge_enable=true;
+    httpd_config_t cfg=HTTPD_DEFAULT_CONFIG();
+    cfg.stack_size=12288;
+    cfg.max_uri_handlers=28;
+    cfg.max_open_sockets=7;
+    cfg.lru_purge_enable=true;
     esp_err_t e=httpd_start(&s_server,&cfg); if(e!=ESP_OK)return e;
     const httpd_uri_t routes[]={
       {.uri="/",.method=HTTP_GET,.handler=home_get},
@@ -309,6 +331,7 @@ esp_err_t web_start(void)
       {.uri="/api/v1/system/reboot",.method=HTTP_POST,.handler=reboot_post}
     };
     for(size_t i=0;i<sizeof(routes)/sizeof(routes[0]);++i){e=httpd_register_uri_handler(s_server,&routes[i]);if(e!=ESP_OK)return e;}
-    ESP_LOGI(TAG,"HTTP ready: administration foundation + AP/STA config + hardware inventory");
+    e=files_web_register(s_server);if(e!=ESP_OK)return e;
+    ESP_LOGI(TAG,"HTTP ready: admin foundation + dual-volume files service; camera capture still disabled");
     return ESP_OK;
 }

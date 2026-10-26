@@ -15,7 +15,7 @@
 #define LCD_H 320
 #define DMA_ROWS 20
 
-static const char *TAG = "CS002_LCD";
+static const char *TAG = "CS005_LCD";
 static uint16_t *frame;
 static uint16_t *stripe[2];
 static esp_lcd_panel_handle_t panel;
@@ -125,12 +125,7 @@ esp_err_t display_start(void)
     if (e != ESP_OK) return e;
     gpio_set_level(GPIO_NUM_1, 0);
 
-    spi_bus_config_t bus = {
-        .sclk_io_num = 39, .mosi_io_num = 38, .miso_io_num = 40,
-        .quadwp_io_num = -1, .quadhd_io_num = -1,
-        .max_transfer_sz = LCD_W * DMA_ROWS * 2
-    };
-    e = spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO);
+    e = board_spi_start();
     if (e != ESP_OK) return e;
 
     esp_lcd_panel_io_handle_t io = NULL;
@@ -161,7 +156,7 @@ esp_err_t display_start(void)
     if (e != ESP_OK) return e;
     gpio_set_level(GPIO_NUM_1, 1);
     s_ready = true;
-    ESP_LOGI(TAG, "Static CAMERA SYNTH product screen ready; no refresh task started");
+    ESP_LOGI(TAG, "Static CAMERA SYNTH screen ready on shared SPI2; no refresh task started");
 
     free(frame); frame = NULL;
     free(stripe[0]); stripe[0] = NULL;
