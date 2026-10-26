@@ -1,11 +1,12 @@
 # PRISMA PI — ESP32-S3 Touch LCD 2
 
-Appliance independiente basado en Waveshare ESP32-S3-Touch-LCD-2. Modelo y resolución 240×320 confirmados visualmente en la placa del usuario. Cámara instalada; OV5640 según el kit, ahora identificada por firmware en Build 002 pero pendiente de validación física en la unidad.
+Appliance independiente basado en Waveshare ESP32-S3-Touch-LCD-2. Modelo y resolución 240×320 confirmados visualmente en la placa del usuario. Cámara instalada; OV5640 según el kit. Build 003 avanza a una captura única de diagnóstico, todavía pendiente de validación física en la unidad.
 
 ## Estado
 
 - Build 001: base de firmware, LCD/touch, glitch, Wi-Fi AP y administración local. CI compilado correctamente; ver [alcance y prueba](docs/BUILD_001.md).
-- Build 002: identificación e inicialización de cámara, diagnóstico de sensor/PID y exposición del estado en LCD y web. CI y prueba física deben completarse antes de habilitar captura; ver [Build 002](docs/BUILD_002.md).
+- Build 002: identificación e inicialización de cámara, diagnóstico de sensor/PID y exposición del estado en LCD y web. CI compilado correctamente; ver [Build 002](docs/BUILD_002.md).
+- Build 003: prueba de adquisición de un único frame JPEG QVGA, con resolución, bytes y tiempo de captura visibles en LCD y administración. Preview y streaming siguen deshabilitados; ver [Build 003](docs/BUILD_003.md).
 
 ## Base funcional
 
@@ -15,7 +16,7 @@ Tomar como referencia funcional PRISMA-PI-LITE, revisando su código y versión 
 
 - Detectar procesador, tamaño de Flash y PSRAM.
 - Verificar LCD, orientación, brillo y coordenadas táctiles.
-- Identificar cámara y, después de G0, presentar imagen local.
+- Identificar cámara, validar entrega de frames y luego presentar imagen local.
 - Probar lectura/escritura microSD sin sobrescribir archivos existentes.
 - Mostrar aceleración y giro de la IMU.
 - Mostrar voltaje de batería; no confundir voltaje con porcentaje exacto.
@@ -32,11 +33,11 @@ Probar mDNS en AP y STA, tras reinicios y reconexiones, y desde los dispositivos
 ## Etapas
 
 1. Descargar y revisar ejemplos oficiales y esquema; documentar pines y recursos compartidos. Hecho a nivel de revisión estática.
-2. Fijar versiones reproducibles de ESP-IDF y componentes según los ejemplos verificados. IDF 5.3.2; cámara 2.0.15 para Build 002.
-3. Compilar y validar periféricos por separado. Build 002 cubre identidad de cámara; validación física pendiente.
+2. Fijar versiones reproducibles de ESP-IDF y componentes según los ejemplos verificados. IDF 5.3.2; cámara 2.0.15.
+3. Compilar y validar periféricos por separado. Build 002 cubre identidad de cámara; Build 003 cubre primera adquisición real; validación física pendiente.
 4. Integrar diagnóstico, interfaz y configuración persistente.
 5. Validar conectividad y ESP-NOW.
-6. Integrar captura, vista local y streaming midiendo FPS y memoria.
+6. Integrar vista local y streaming midiendo FPS y memoria, sólo después de aprobar la captura estable.
 7. Evaluar efectos, overlays, almacenamiento de secuencias y loops. Capacidad y rendimiento pendientes de medición.
 
 OTA, BLE/MIDI y detección de rostros quedan como ampliaciones a diseñar y validar. No se presupone audio integrado ni compatibilidad directa de ESP-WHO con esta placa.

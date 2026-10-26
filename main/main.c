@@ -28,11 +28,11 @@ static esp_err_t page(httpd_req_t *r){
  return httpd_resp_send(r,html_start,html_end-html_start-1);
 }
 static esp_err_t status(httpd_req_t *r){
- char b[1700],ip[20]=""; esp_chip_info_t chip; esp_chip_info(&chip);
+ char b[2300],ip[20]=""; esp_chip_info_t chip; esp_chip_info(&chip);
  uint32_t flash=0; esp_err_t fe=esp_flash_get_size(NULL,&flash);
  esp_netif_ip_info_t info; if(ap && esp_netif_get_ip_info(ap,&info)==ESP_OK)snprintf(ip,sizeof(ip),IPSTR,IP2STR(&info.ip));
  wifi_sta_list_t stations={0}; esp_wifi_ap_get_sta_list(&stations);
- int n=snprintf(b,sizeof(b),"{\"build\":\"%s\",\"model\":\"ESP32-S3\",\"cores\":%d,\"revision\":%d,\"flash_bytes\":%"PRIu32",\"flash_read_ok\":%s,\"psram_bytes\":%u,\"heap_free\":%u,\"heap_min\":%u,\"uptime_s\":%"PRId64",\"display\":%s,\"touch\":%s,\"ssid\":\"%s\",\"ip\":\"%s\",\"clients\":%d,\"camera\":\"%s\",\"camera_sensor\":\"%s\",\"camera_pid\":\"0x%04X\",\"camera_expected\":%s,\"camera_midh\":\"0x%02X\",\"camera_midl\":\"0x%02X\",\"camera_ver\":\"0x%02X\",\"camera_error\":\"%s\",\"mdns\":\"pending\",\"esp_now\":\"pending\"}",APP_BUILD,chip.cores,chip.revision,flash,fe==ESP_OK?"true":"false",(unsigned)heap_caps_get_total_size(MALLOC_CAP_SPIRAM),(unsigned)esp_get_free_heap_size(),(unsigned)esp_get_minimum_free_heap_size(),esp_timer_get_time()/1000000,display_ready()?"true":"false",touch_ready()?"true":"false",app_ssid,ip,stations.num,camera_state_text(),camera_sensor_name,camera_pid,camera_expected?"true":"false",camera_midh,camera_midl,camera_ver,camera_error);
+ int n=snprintf(b,sizeof(b),"{\"build\":\"%s\",\"model\":\"ESP32-S3\",\"cores\":%d,\"revision\":%d,\"flash_bytes\":%"PRIu32",\"flash_read_ok\":%s,\"psram_bytes\":%u,\"heap_free\":%u,\"heap_min\":%u,\"uptime_s\":%"PRId64",\"display\":%s,\"touch\":%s,\"ssid\":\"%s\",\"ip\":\"%s\",\"clients\":%d,\"camera\":\"%s\",\"camera_sensor\":\"%s\",\"camera_pid\":\"0x%04X\",\"camera_expected\":%s,\"camera_midh\":\"0x%02X\",\"camera_midl\":\"0x%02X\",\"camera_ver\":\"0x%02X\",\"camera_error\":\"%s\",\"capture\":\"%s\",\"frame_width\":%u,\"frame_height\":%u,\"frame_bytes\":%u,\"frame_format\":\"%s\",\"capture_ms\":%u,\"capture_error\":\"%s\",\"mdns\":\"pending\",\"esp_now\":\"pending\"}",APP_BUILD,chip.cores,chip.revision,flash,fe==ESP_OK?"true":"false",(unsigned)heap_caps_get_total_size(MALLOC_CAP_SPIRAM),(unsigned)esp_get_free_heap_size(),(unsigned)esp_get_minimum_free_heap_size(),esp_timer_get_time()/1000000,display_ready()?"true":"false",touch_ready()?"true":"false",app_ssid,ip,stations.num,camera_state_text(),camera_sensor_name,camera_pid,camera_expected?"true":"false",camera_midh,camera_midl,camera_ver,camera_error,camera_capture_state_text(),camera_frame_width,camera_frame_height,(unsigned)camera_frame_bytes,camera_frame_format,(unsigned)camera_capture_ms,camera_capture_error);
  if(n<0||n>=sizeof(b))return httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,"status overflow");
  httpd_resp_set_type(r,"application/json");httpd_resp_set_hdr(r,"Cache-Control","no-store");return httpd_resp_send(r,b,n);
 }
@@ -57,10 +57,14 @@ static esp_err_t network_start(void){
  network_ready=true;return ESP_OK;
 }
 void app_main(void){
- // No automatic erase: preserve saved data if NVS cannot be opened.
  esp_err_t e=nvs_flash_init();
  if(e==ESP_OK)e=network_start();
  if(e!=ESP_OK)ESP_LOGE("PRISMA","Network/NVS: %s",esp_err_to_name(e));
  e=display_start();if(e!=ESP_OK)ESP_LOGE("PRISMA","Display: %s (web remains available)",esp_err_to_name(e));
- e=camera_start();if(e!=ESP_OK)ESP_LOGE("PRISMA","Camera probe: %s (administration remains available)",esp_err_to_name(e));
+ e=camera_start();
+ if(e!=ESP_OK){ESP_LOGE("PRISMA","Camera probe: %s (administration remains available)",esp_err_to_name(e));}
+ else{
+  e=camera_capture_test();
+  if(e!=ESP_OK)ESP_LOGE("PRISMA","Camera capture test: %s (administration remains available)",esp_err_to_name(e));
+ }
 }

@@ -3,6 +3,7 @@
 #include "esp_camera.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "app.h"
 
 static const char *TAG="CAMERA";
@@ -13,10 +14,66 @@ uint16_t camera_pid=0;
 uint8_t camera_midh=0,camera_midl=0,camera_ver=0;
 char camera_sensor_name[24]="NOT PROBED";
 char camera_error[64]="probing";
+bool camera_capture_attempted=false;
+bool camera_capture_ready=false;
+uint16_t camera_frame_width=0,camera_frame_height=0;
+uint32_t camera_frame_bytes=0,camera_capture_ms=0;
+char camera_frame_format[12]="pending";
+char camera_capture_error[64]="not attempted";
 
 const char *camera_state_text(void){
  if(!camera_probed)return "probing";
  return camera_ready?"ready":"error";
+}
+
+const char *camera_capture_state_text(void){
+ if(!camera_capture_attempted)return "pending";
+ return camera_capture_ready?"ready":"error";
+}
+
+static const char *format_name(pixformat_t f){
+ switch(f){
+  case PIXFORMAT_RGB565:return "RGB565";
+  case PIXFORMAT_YUV422:return "YUV422";
+  case PIXFORMAT_GRAYSCALE:return "GRAY";
+  case PIXFORMAT_JPEG:return "JPEG";
+  case PIXFORMAT_RGB888:return "RGB888";
+  case PIXFORMAT_RAW:return "RAW";
+  case PIXFORMAT_RGB444:return "RGB444";
+  case PIXFORMAT_RGB555:return "RGB555";
+  default:return "UNKNOWN";
+ }
+}
+
+esp_err_t camera_capture_test(void){
+ camera_capture_attempted=true;
+ camera_capture_ready=false;
+ camera_frame_width=0;
+ camera_frame_height=0;
+ camera_frame_bytes=0;
+ camera_capture_ms=0;
+ strlcpy(camera_frame_format,"pending",sizeof(camera_frame_format));
+ if(!camera_ready){
+  strlcpy(camera_capture_error,"camera not initialized",sizeof(camera_capture_error));
+  return ESP_ERR_INVALID_STATE;
+ }
+ int64_t start=esp_timer_get_time();
+ camera_fb_t *fb=esp_camera_fb_get();
+ camera_capture_ms=(uint32_t)((esp_timer_get_time()-start+999)/1000);
+ if(!fb){
+  strlcpy(camera_capture_error,"frame unavailable",sizeof(camera_capture_error));
+  ESP_LOGE(TAG,"Capture test failed: %s",camera_capture_error);
+  return ESP_FAIL;
+ }
+ camera_frame_width=(uint16_t)fb->width;
+ camera_frame_height=(uint16_t)fb->height;
+ camera_frame_bytes=(uint32_t)fb->len;
+ strlcpy(camera_frame_format,format_name(fb->format),sizeof(camera_frame_format));
+ esp_camera_fb_return(fb);
+ camera_capture_ready=true;
+ strlcpy(camera_capture_error,"none",sizeof(camera_capture_error));
+ ESP_LOGI(TAG,"Capture test OK: %ux%u %s %u bytes in %u ms",camera_frame_width,camera_frame_height,camera_frame_format,(unsigned)camera_frame_bytes,(unsigned)camera_capture_ms);
+ return ESP_OK;
 }
 
 esp_err_t camera_start(void){

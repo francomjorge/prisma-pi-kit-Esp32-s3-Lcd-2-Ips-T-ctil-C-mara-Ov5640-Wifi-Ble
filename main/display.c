@@ -24,14 +24,12 @@ bool display_ready(void){return lcd_ok;}
 bool touch_ready(void){return tp_ok;}
 static inline uint16_t rgb(uint8_t r,uint8_t g,uint8_t b){uint16_t c=((r&248)<<8)|((g&252)<<3)|(b>>3);return (c>>8)|(c<<8);}
 static void rect(int x,int y,int w,int h,uint16_t c){for(int yy=y;yy<y+h&&yy<H;yy++)for(int xx=x;xx<x+w&&xx<W;xx++)if(xx>=0&&yy>=0)frame[yy*W+xx]=c;}
-// Bitmap glyphs retained from the user's PRISMA-PI-LITE interface.
 #include "font.inc"
 static void tc(int y,const char*s,int z,uint16_t c){text((W-((int)strlen(s)*6*z-z))/2,y,s,z,c);}
 static bool finished(esp_lcd_panel_io_handle_t io,esp_lcd_panel_io_event_data_t*ev,void*ctx){BaseType_t wake=pdFALSE;xSemaphoreGiveFromISR(done,&wake);return wake==pdTRUE;}
 static void show(void){
  for(int y=0;y<H;y+=16){memcpy(stripe,frame+y*W,W*16*2);
  if(esp_lcd_panel_draw_bitmap(panel,0,y,W,y+16,stripe)!=ESP_OK){lcd_ok=false;return;}
- // Never reuse DMA storage while a transfer is outstanding.
  if(xSemaphoreTake(done,pdMS_TO_TICKS(1000))!=pdTRUE){lcd_ok=false;ESP_LOGE("LCD","DMA timeout");vTaskDelete(NULL);}
  }
 }
@@ -39,24 +37,26 @@ static void draw(int page,int phase){
  uint16_t wh=rgb(240,245,235),accent=rgb(255,191,69),dim=rgb(77,88,94),ok=rgb(137,239,194);rect(0,0,W,H,rgb(7,13,18));
  if(page==0){
   tc(58,"PRISMA P",4,wh);uint16_t pal[]={rgb(255,191,69),rgb(137,239,194),rgb(250,246,220),rgb(196,142,84),rgb(100,185,168)};
-  tc(110,"CAMERA",3,pal[phase%5]);rect(42,155,156,2,accent);tc(184,"TAP FOR GLITCH",1,wh);tc(214,"SWIPE TO CONTINUE",1,dim);tc(255,"BUILD 002",1,accent);
+  tc(110,"CAMERA",3,pal[phase%5]);rect(42,155,156,2,accent);tc(184,"TAP FOR GLITCH",1,wh);tc(214,"SWIPE TO CONTINUE",1,dim);tc(255,"BUILD 003",1,accent);
  }else if(page==1){
-  char sensor[40],pid[20];
-  tc(22,"PRISMA P",3,wh);tc(58,"CAMERA DIAGNOSTIC",1,accent);
-  tc(104,camera_ready?"CAMERA READY":camera_probed?"CAMERA ERROR":"CAMERA PROBING",2,camera_ready?ok:accent);
-  snprintf(sensor,sizeof(sensor),"SENSOR %s",camera_sensor_name);tc(146,sensor,1,camera_ready?wh:dim);
-  snprintf(pid,sizeof(pid),"PID %04X",camera_pid);tc(170,pid,1,camera_ready?wh:dim);
-  tc(205,camera_expected?"OV5640 CONFIRMED":"OV5640 NOT CONFIRMED",1,camera_expected?ok:dim);
-  tc(250,"STREAM PENDING",1,dim);
+  char sensor[40],pid[20],fr[32],sz[32],tm[32];
+  tc(18,"PRISMA P",3,wh);tc(50,"CAMERA + FRAME TEST",1,accent);
+  tc(82,camera_ready?"CAMERA READY":camera_probed?"CAMERA ERROR":"CAMERA PROBING",2,camera_ready?ok:accent);
+  snprintf(sensor,sizeof(sensor),"SENSOR %s",camera_sensor_name);tc(122,sensor,1,camera_ready?wh:dim);
+  snprintf(pid,sizeof(pid),"PID %04X",camera_pid);tc(143,pid,1,camera_ready?wh:dim);
+  tc(168,camera_capture_ready?"FRAME CAPTURED":camera_capture_attempted?"CAPTURE ERROR":"CAPTURE PENDING",1,camera_capture_ready?ok:accent);
+  if(camera_capture_ready){
+   snprintf(fr,sizeof(fr),"FRAME %ux%u %s",camera_frame_width,camera_frame_height,camera_frame_format);tc(193,fr,1,wh);
+   snprintf(sz,sizeof(sz),"SIZE %u BYTES",(unsigned)camera_frame_bytes);tc(215,sz,1,wh);
+   snprintf(tm,sizeof(tm),"CAPTURE %u MS",(unsigned)camera_capture_ms);tc(237,tm,1,wh);
+  }else tc(215,"STREAM PENDING",1,dim);
  }else{
   char cam[40];
-  tc(20,"ADMINISTRATION",2,accent);tc(67,network_ready?"WIFI AP ACTIVE":"NETWORK ERROR",1,wh);tc(99,app_ssid,1,wh);tc(132,"WIFI PASSWORD",1,dim);tc(154,app_password,2,accent);tc(202,network_ready?"192.168.4.1":"CHECK USB LOG",2,wh);
-  snprintf(cam,sizeof(cam),"CAMERA %s",camera_ready?camera_sensor_name:camera_probed?"ERROR":"PROBING");tc(239,cam,1,camera_ready?ok:dim);tc(259,"MDNS PENDING",1,dim);
+  tc(17,"ADMINISTRATION",2,accent);tc(59,network_ready?"WIFI AP ACTIVE":"NETWORK ERROR",1,wh);tc(87,app_ssid,1,wh);tc(116,"WIFI PASSWORD",1,dim);tc(138,app_password,2,accent);tc(184,network_ready?"192.168.4.1":"CHECK USB LOG",2,wh);
+  snprintf(cam,sizeof(cam),"CAMERA %s",camera_ready?camera_sensor_name:camera_probed?"ERROR":"PROBING");tc(224,cam,1,camera_ready?ok:dim);
+  tc(246,camera_capture_ready?"FRAME TEST READY":camera_capture_attempted?"FRAME TEST ERROR":"FRAME TEST PENDING",1,camera_capture_ready?ok:dim);tc(268,"MDNS PENDING",1,dim);
  }
- for(int i=0;i<3;i++){
-  rect(96+i*20,297,8,8,i==page?accent:dim);
- }
- show();
+ for(int i=0;i<3;i++){rect(96+i*20,297,8,8,i==page?accent:dim);}show();
 }
 static void glitch(int x,int y){
  uint16_t pal[]={rgb(255,191,69),rgb(137,239,194),rgb(250,246,220),rgb(196,142,84),rgb(100,185,168)};
