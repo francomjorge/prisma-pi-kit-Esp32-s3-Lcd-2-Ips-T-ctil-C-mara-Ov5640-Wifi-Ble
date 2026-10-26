@@ -85,7 +85,7 @@ typedef struct {
     uint64_t total_bytes;
     uint64_t used_bytes;
     uint64_t free_bytes;
-    uint32_t max_open_files;
+    unsigned int max_open_files;
     char error[80];
 } storage_volume_state_t;
 
