@@ -17,13 +17,13 @@ jobs:
           . /opt/esp/idf/export.sh
           idf.py build
           cd build
-          esptool.py --chip esp32s3 merge_bin -o PRISMA-CAMERA-build-001-factory.bin @flash_args
-          sha256sum PRISMA-CAMERA-build-001-factory.bin > SHA256SUMS.txt
+          esptool.py --chip esp32s3 merge_bin -o PRISMA-CAMERA-build-002-factory.bin @flash_args
+          sha256sum PRISMA-CAMERA-build-002-factory.bin > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: PRISMA-CAMERA-build-001-${{ github.run_number }}
+          name: PRISMA-CAMERA-build-002-${{ github.run_number }}
           path: |
-            build/PRISMA-CAMERA-build-001-factory.bin
+            build/PRISMA-CAMERA-build-002-factory.bin
             build/SHA256SUMS.txt
             build/flasher_args.json
             build/prisma_camera.elf
