@@ -15,7 +15,7 @@
 #define LCD_H 320
 #define DMA_ROWS 20
 
-static const char *TAG = "CS001_LCD";
+static const char *TAG = "CS002_LCD";
 static uint16_t *frame;
 static uint16_t *stripe[2];
 static esp_lcd_panel_handle_t panel;
@@ -98,19 +98,15 @@ static void draw_product_screen(void)
     const uint16_t green = rgb(28, 156, 101);
 
     rect(0, 0, LCD_W, LCD_H, paper);
-
     text(20, 64, "PRISMA", 4, ink);
     text(164, 64, "-", 4, magenta);
     text(188, 64, "P", 4, cyan);
-
     centered_text(116, "CAMERA", 3, ink);
-
     rect(48, 156, 36, 3, cyan);
     rect(84, 156, 36, 3, magenta);
     rect(120, 156, 36, 3, amber);
     rect(156, 156, 36, 3, violet);
-
-    centered_text(184, "CAMERA SYNC", 2, ink);
+    centered_text(184, "CAMERA SYNTH", 2, ink);
     centered_text(232, "READY", 2, green);
     centered_text(288, "VUDUM DEVELOPMENTS", 1, muted);
 }
@@ -130,11 +126,8 @@ esp_err_t display_start(void)
     gpio_set_level(GPIO_NUM_1, 0);
 
     spi_bus_config_t bus = {
-        .sclk_io_num = 39,
-        .mosi_io_num = 38,
-        .miso_io_num = 40,
-        .quadwp_io_num = -1,
-        .quadhd_io_num = -1,
+        .sclk_io_num = 39, .mosi_io_num = 38, .miso_io_num = 40,
+        .quadwp_io_num = -1, .quadhd_io_num = -1,
         .max_transfer_sz = LCD_W * DMA_ROWS * 2
     };
     e = spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO);
@@ -142,14 +135,9 @@ esp_err_t display_start(void)
 
     esp_lcd_panel_io_handle_t io = NULL;
     esp_lcd_panel_io_spi_config_t io_cfg = {
-        .dc_gpio_num = 42,
-        .cs_gpio_num = 45,
-        .pclk_hz = 40000000,
-        .lcd_cmd_bits = 8,
-        .lcd_param_bits = 8,
-        .spi_mode = 0,
-        .trans_queue_depth = 2,
-        .on_color_trans_done = color_done
+        .dc_gpio_num = 42, .cs_gpio_num = 45, .pclk_hz = 40000000,
+        .lcd_cmd_bits = 8, .lcd_param_bits = 8, .spi_mode = 0,
+        .trans_queue_depth = 2, .on_color_trans_done = color_done
     };
     e = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)SPI2_HOST, &io_cfg, &io);
     if (e != ESP_OK) return e;
@@ -170,14 +158,10 @@ esp_err_t display_start(void)
 
     draw_product_screen();
     e = present_once();
-    if (e != ESP_OK) {
-        ESP_LOGE(TAG, "Static presentation failed: %s", esp_err_to_name(e));
-        return e;
-    }
-
+    if (e != ESP_OK) return e;
     gpio_set_level(GPIO_NUM_1, 1);
     s_ready = true;
-    ESP_LOGI(TAG, "Static 240x320 product screen ready; no refresh task started");
+    ESP_LOGI(TAG, "Static CAMERA SYNTH product screen ready; no refresh task started");
 
     free(frame); frame = NULL;
     free(stripe[0]); stripe[0] = NULL;
