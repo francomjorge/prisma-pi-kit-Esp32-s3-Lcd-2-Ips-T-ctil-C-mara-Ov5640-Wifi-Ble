@@ -68,7 +68,7 @@ static esp_err_t status_get(httpd_req_t*r){
  "\"camera\":{\"state\":\"%s\",\"sensor\":\"%s\",\"expected_sensor\":%s,\"pid_hex\":\"0x%04X\",\"xclk_hz\":%u,\"fb_count\":%u,\"fb_location\":\"%s\",\"capture_enabled\":false,\"error\":\"%s\"},"
  "\"stream\":{\"state\":\"deferred\"},\"esp_now\":{\"state\":\"planned\"},\"ble\":{\"state\":\"planned\"}}",
  PRISMA_PRODUCT,PRISMA_APPLICATION,PRISMA_VENDOR,PRISMA_FIRMWARE_VERSION,PRISMA_BUILD_ID,fn,host,d.url,(unsigned)cfg.schema,(unsigned long long)(esp_timer_get_time()/1000000),reset_name(esp_reset_reason()),healthy?"ready":"degraded",
- chip.cores,chip.revision,flash,flash_ok?"true":"false",sta_mac,ap_mac,heap,heap_min,(unsigned)ps_total,(unsigned)ps_free,board_i2c_ready()?"ready":"error",st.shared_spi_ready?"true":"false",
+ chip.cores,chip.revision,(unsigned)flash,flash_ok?"true":"false",sta_mac,ap_mac,(unsigned)heap,(unsigned)heap_min,(unsigned)ps_total,(unsigned)ps_free,board_i2c_ready()?"ready":"error",st.shared_spi_ready?"true":"false",
  st.internal.mounted?"true":"false",st.internal.fs,(unsigned long long)st.internal.total_bytes,(unsigned long long)st.internal.used_bytes,(unsigned long long)st.internal.free_bytes,st.internal.max_open_files,ie,
  st.sd.mounted?"true":"false",st.sd.fs,(unsigned long long)st.sd.total_bytes,(unsigned long long)st.sd.used_bytes,(unsigned long long)st.sd.free_bytes,st.sd.max_open_files,se,ota0?"true":"false",ota1?"true":"false",
  display_ready()?"true":"false",display_ready()?"ready":"error",net.ready?"true":"false",net.open?"true":"false",net.open?"OPEN":"WPA2-PSK",ap,net.ip,net.clients,net.channel,net.max_clients,
@@ -76,7 +76,10 @@ static esp_err_t status_get(httpd_req_t*r){
  touch.ready?"ready":"error",touch.controller,touch.address,touch.chip_id,touch.error,
  imu.ready?"ready":"error",imu.controller,imu.address,imu.address,imu.who_am_i,imu.who_am_i,imu.revision,imu.revision,imu_e,
  cam.ready?"ready":"error",cam.sensor_name,cam.expected?"true":"false",cam.pid,(unsigned)cam.xclk_hz,(unsigned)cam.fb_count,cam.fb_location,cam.error);
- if(n<0||n>=(int)sizeof(json))return httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,"status overflow");return httpd_resp_send(r,json,n);
+ if(n<0||n>=(int)sizeof(json)){
+  return httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,"status overflow");
+ }
+ return httpd_resp_send(r,json,n);
 }
 
 static esp_err_t config_get(httpd_req_t*r){prisma_settings_t c={0};settings_get(&c);char f[80],h[80],a[80],s[80];esc_json(c.friendly_name,f,sizeof(f));esc_json(c.hostname,h,sizeof(h));esc_json(c.ap_ssid,a,sizeof(a));esc_json(c.sta_ssid,s,sizeof(s));char j[1100];snprintf(j,sizeof(j),"{\"schema\":%u,\"friendly_name\":\"%s\",\"hostname\":\"%s\",\"ap\":{\"ssid\":\"%s\",\"open\":%s,\"password_configured\":%s,\"channel\":%u,\"max_clients\":%u},\"sta\":{\"enabled\":%s,\"ssid\":\"%s\",\"password_configured\":%s}}",(unsigned)c.schema,f,h,a,c.ap_open?"true":"false",c.ap_password[0]?"true":"false",c.ap_channel,c.ap_max_clients,c.sta_enabled?"true":"false",s,c.sta_password[0]?"true":"false");return send_json(r,j);}
