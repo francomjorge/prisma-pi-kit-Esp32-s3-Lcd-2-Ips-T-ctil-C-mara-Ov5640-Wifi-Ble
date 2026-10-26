@@ -11,10 +11,19 @@ typedef struct {
     uint8_t clients;
 } network_state_t;
 
+typedef struct {
+    bool ready;
+    char hostname[64];
+    char url[96];
+} discovery_state_t;
+
 esp_err_t display_start(void);
 bool display_ready(void);
 
 esp_err_t network_start(void);
 void network_get_state(network_state_t *out);
+
+esp_err_t discovery_start(void);
+void discovery_get_state(discovery_state_t *out);
 
 esp_err_t web_start(void);
