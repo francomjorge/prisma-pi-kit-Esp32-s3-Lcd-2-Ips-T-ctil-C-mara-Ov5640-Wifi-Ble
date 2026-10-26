@@ -1,15 +1,48 @@
 #pragma once
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "esp_err.h"
+
+#define PRISMA_SETTINGS_SCHEMA 1
+#define PRISMA_SCAN_MAX 16
+
+typedef struct {
+    uint32_t schema;
+    char friendly_name[33];
+    char hostname[33];
+    char ap_ssid[33];
+    char ap_password[64];
+    bool ap_open;
+    uint8_t ap_channel;
+    uint8_t ap_max_clients;
+    bool sta_enabled;
+    char sta_ssid[33];
+    char sta_password[64];
+} prisma_settings_t;
 
 typedef struct {
     bool ready;
     bool open;
+    bool sta_configured;
+    bool sta_connected;
+    char mode[12];
     char ssid[33];
     char ip[16];
     uint8_t clients;
+    uint8_t channel;
+    uint8_t max_clients;
+    char sta_ssid[33];
+    char sta_ip[16];
+    int8_t sta_rssi;
 } network_state_t;
+
+typedef struct {
+    char ssid[33];
+    int8_t rssi;
+    uint8_t channel;
+    uint8_t authmode;
+} wifi_ap_info_t;
 
 typedef struct {
     bool ready;
@@ -41,11 +74,21 @@ typedef struct {
     char error[64];
 } touch_hw_state_t;
 
+esp_err_t settings_start(void);
+void settings_get(prisma_settings_t *out);
+esp_err_t settings_set_identity(const char *friendly_name, const char *hostname);
+esp_err_t settings_set_ap(const char *ssid, bool open, const char *password, uint8_t channel, uint8_t max_clients);
+esp_err_t settings_set_sta(const char *ssid, const char *password, bool enabled);
+esp_err_t settings_clear_sta(void);
+
 esp_err_t display_start(void);
 bool display_ready(void);
 
 esp_err_t network_start(void);
 void network_get_state(network_state_t *out);
+esp_err_t network_scan(wifi_ap_info_t *out, size_t max_results, size_t *count);
+esp_err_t network_connect_sta(const char *ssid, const char *password);
+esp_err_t network_forget_sta(void);
 
 esp_err_t discovery_start(void);
 void discovery_get_state(discovery_state_t *out);

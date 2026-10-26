@@ -3,7 +3,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 
-static const char *TAG = "CS003";
+static const char *TAG = "CS004";
 
 static bool init_nvs(void)
 {
@@ -18,9 +18,12 @@ static bool init_nvs(void)
 void app_main(void)
 {
     ESP_LOGI(TAG, "%s / %s starting", PRISMA_PRODUCT, PRISMA_BUILD_ID);
-    if (!init_nvs()) ESP_LOGE(TAG, "NVS initialization failed; continuing in degraded mode");
+    if (!init_nvs()) ESP_LOGE(TAG, "NVS initialization failed; settings may not persist");
 
-    esp_err_t err = display_start();
+    esp_err_t err = settings_start();
+    if (err != ESP_OK) ESP_LOGW(TAG, "Settings load/save degraded: %s", esp_err_to_name(err));
+
+    err = display_start();
     if (err != ESP_OK) ESP_LOGE(TAG, "Display init failed: %s", esp_err_to_name(err));
 
     err = touch_hw_probe();
@@ -53,13 +56,10 @@ void app_main(void)
     camera_hw_get_state(&camera);
     touch_hw_get_state(&touch);
 
-    ESP_LOGI(TAG, "READY display=%s camera=%s PID=%04X touch=%s ID=%02X AP=%s IP=%s mDNS=%s",
-             display_ready() ? "ready" : "error",
-             camera.ready ? camera.sensor_name : "error",
-             camera.pid,
-             touch.ready ? touch.controller : "error",
-             touch.chip_id,
-             net.ssid[0] ? net.ssid : "-",
-             net.ip[0] ? net.ip : "-",
+    ESP_LOGI(TAG, "READY camera=%s PID=%04X touch=%s ID=%02X AP=%s IP=%s STA=%s mDNS=%s",
+             camera.ready ? camera.sensor_name : "error", camera.pid,
+             touch.ready ? touch.controller : "error", touch.chip_id,
+             net.ssid[0] ? net.ssid : "-", net.ip[0] ? net.ip : "-",
+             net.sta_connected ? net.sta_ip : "disconnected",
              discovery.ready ? discovery.url : "unavailable");
 }

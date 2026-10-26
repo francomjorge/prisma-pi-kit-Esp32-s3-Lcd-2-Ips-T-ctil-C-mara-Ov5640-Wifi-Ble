@@ -1,10 +1,11 @@
+#include <stdio.h>
 #include <string.h>
 #include "mdns.h"
 #include "esp_log.h"
 #include "app.h"
 #include "identity.h"
 
-static const char *TAG = "CS002_MDNS";
+static const char *TAG = "CS004_MDNS";
 static discovery_state_t s_state;
 
 void discovery_get_state(discovery_state_t *out)
@@ -15,13 +16,15 @@ void discovery_get_state(discovery_state_t *out)
 esp_err_t discovery_start(void)
 {
     memset(&s_state, 0, sizeof(s_state));
-    strlcpy(s_state.hostname, PRISMA_HOSTNAME, sizeof(s_state.hostname));
-    strlcpy(s_state.url, PRISMA_MDNS_URL, sizeof(s_state.url));
+    prisma_settings_t cfg = {0};
+    settings_get(&cfg);
+    strlcpy(s_state.hostname, cfg.hostname, sizeof(s_state.hostname));
+    snprintf(s_state.url, sizeof(s_state.url), "http://%s.local/", cfg.hostname);
 
     esp_err_t err = mdns_init();
     if (err != ESP_OK) return err;
-    if ((err = mdns_hostname_set(PRISMA_HOSTNAME)) != ESP_OK) return err;
-    if ((err = mdns_instance_name_set(PRISMA_PRODUCT)) != ESP_OK) return err;
+    if ((err = mdns_hostname_set(cfg.hostname)) != ESP_OK) return err;
+    if ((err = mdns_instance_name_set(cfg.friendly_name)) != ESP_OK) return err;
     if ((err = mdns_service_add(PRISMA_APPLICATION, "_http", "_tcp", 80, NULL, 0)) != ESP_OK) return err;
 
     mdns_txt_item_t txt[] = {
