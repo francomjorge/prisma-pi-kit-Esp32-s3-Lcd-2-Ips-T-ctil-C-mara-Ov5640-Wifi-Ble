@@ -7,6 +7,7 @@
 #define PRISMA_SETTINGS_SCHEMA 1
 #define PRISMA_SCAN_MAX 16
 #define PRISMA_STORAGE_MAX_OPEN_FILES 12
+#define PRISMA_EVENT_LOG_CAPACITY 64
 
 typedef struct {
     uint32_t schema;
@@ -76,6 +77,16 @@ typedef struct {
 } touch_hw_state_t;
 
 typedef struct {
+    bool probed;
+    bool ready;
+    uint8_t address;
+    uint8_t who_am_i;
+    uint8_t revision;
+    char controller[24];
+    char error[64];
+} imu_hw_state_t;
+
+typedef struct {
     bool available;
     bool mounted;
     bool writable;
@@ -95,15 +106,31 @@ typedef struct {
     storage_volume_state_t sd;
 } storage_state_t;
 
+typedef struct {
+    uint32_t sequence;
+    uint64_t uptime_ms;
+    char level[8];
+    char subsystem[20];
+    char message[112];
+} platform_event_t;
+
 esp_err_t settings_start(void);
 void settings_get(prisma_settings_t *out);
 esp_err_t settings_set_identity(const char *friendly_name, const char *hostname);
 esp_err_t settings_set_ap(const char *ssid, bool open, const char *password, uint8_t channel, uint8_t max_clients);
 esp_err_t settings_set_sta(const char *ssid, const char *password, bool enabled);
 esp_err_t settings_clear_sta(void);
+esp_err_t settings_apply(const prisma_settings_t *candidate);
+esp_err_t settings_factory_reset(void);
 
 esp_err_t board_spi_start(void);
 bool board_spi_ready(void);
+
+esp_err_t board_i2c_start(void);
+bool board_i2c_ready(void);
+esp_err_t board_i2c_probe(uint8_t address, uint32_t timeout_ms);
+esp_err_t board_i2c_read_reg(uint8_t address, uint8_t reg, uint8_t *data, size_t len, uint32_t timeout_ms);
+esp_err_t board_i2c_write_reg(uint8_t address, uint8_t reg, const uint8_t *data, size_t len, uint32_t timeout_ms);
 
 esp_err_t storage_start(void);
 void storage_get_state(storage_state_t *out);
@@ -132,4 +159,13 @@ void camera_hw_get_state(camera_hw_state_t *out);
 esp_err_t touch_hw_probe(void);
 void touch_hw_get_state(touch_hw_state_t *out);
 
+esp_err_t imu_hw_probe(void);
+void imu_hw_get_state(imu_hw_state_t *out);
+
+esp_err_t platform_log_start(void);
+void platform_log_event(const char *level, const char *subsystem, const char *message);
+size_t platform_log_copy(platform_event_t *out, size_t max_events);
+uint32_t platform_log_total_events(void);
+
+esp_err_t platform_web_register(void *server_handle);
 esp_err_t web_start(void);
