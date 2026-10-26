@@ -7,7 +7,7 @@
 #include "app.h"
 #include "identity.h"
 
-static const char *TAG = "CS004_SETTINGS";
+static const char *TAG = "CS006_SETTINGS";
 static const char *NS = "prisma_cfg";
 static const char *KEY = "settings";
 static prisma_settings_t s_cfg;
@@ -30,6 +30,25 @@ static bool valid_printable(const char *s, size_t max_len, bool allow_empty)
     for (size_t i = 0; i < n; ++i) {
         unsigned char c = (unsigned char)s[i];
         if (c < 32 || c > 126 || c == '"' || c == '\\') return false;
+    }
+    return true;
+}
+
+static bool valid_settings(const prisma_settings_t *cfg)
+{
+    if (!cfg || cfg->schema != PRISMA_SETTINGS_SCHEMA) return false;
+    if (!valid_printable(cfg->friendly_name, 32, false)) return false;
+    if (!valid_hostname(cfg->hostname)) return false;
+    if (!valid_printable(cfg->ap_ssid, 32, false)) return false;
+    if (cfg->ap_channel < 1 || cfg->ap_channel > 13) return false;
+    if (cfg->ap_max_clients < 1 || cfg->ap_max_clients > 4) return false;
+    if (!cfg->ap_open) {
+        size_t n = strlen(cfg->ap_password);
+        if (n < 8 || n > 63 || !valid_printable(cfg->ap_password, 63, false)) return false;
+    }
+    if (cfg->sta_enabled) {
+        if (!valid_printable(cfg->sta_ssid, 32, false)) return false;
+        if (!valid_printable(cfg->sta_password, 63, true)) return false;
     }
     return true;
 }
@@ -73,9 +92,7 @@ esp_err_t settings_start(void)
         size_t size = sizeof(loaded);
         e = nvs_get_blob(h, KEY, &loaded, &size);
         nvs_close(h);
-        if (e == ESP_OK && size == sizeof(loaded) && loaded.schema == PRISMA_SETTINGS_SCHEMA &&
-            valid_hostname(loaded.hostname) && valid_printable(loaded.ap_ssid, 32, false) &&
-            loaded.ap_channel >= 1 && loaded.ap_channel <= 13 && loaded.ap_max_clients >= 1 && loaded.ap_max_clients <= 4) {
+        if (e == ESP_OK && size == sizeof(loaded) && valid_settings(&loaded)) {
             s_cfg = loaded;
             ESP_LOGI(TAG, "Loaded settings schema=%u hostname=%s AP=%s", (unsigned)s_cfg.schema, s_cfg.hostname, s_cfg.ap_ssid);
             return ESP_OK;
@@ -92,51 +109,58 @@ void settings_get(prisma_settings_t *out)
     if (out) *out = s_cfg;
 }
 
-esp_err_t settings_set_identity(const char *friendly_name, const char *hostname)
+esp_err_t settings_apply(const prisma_settings_t *candidate)
 {
-    if (!valid_printable(friendly_name, 32, false) || !valid_hostname(hostname)) return ESP_ERR_INVALID_ARG;
+    if (!valid_settings(candidate)) return ESP_ERR_INVALID_ARG;
     prisma_settings_t old = s_cfg;
-    strlcpy(s_cfg.friendly_name, friendly_name, sizeof(s_cfg.friendly_name));
-    strlcpy(s_cfg.hostname, hostname, sizeof(s_cfg.hostname));
+    s_cfg = *candidate;
     esp_err_t e = save();
     if (e != ESP_OK) s_cfg = old;
     return e;
+}
+
+esp_err_t settings_factory_reset(void)
+{
+    prisma_settings_t old = s_cfg;
+    defaults();
+    esp_err_t e = save();
+    if (e != ESP_OK) s_cfg = old;
+    return e;
+}
+
+esp_err_t settings_set_identity(const char *friendly_name, const char *hostname)
+{
+    if (!valid_printable(friendly_name, 32, false) || !valid_hostname(hostname)) return ESP_ERR_INVALID_ARG;
+    prisma_settings_t next = s_cfg;
+    strlcpy(next.friendly_name, friendly_name, sizeof(next.friendly_name));
+    strlcpy(next.hostname, hostname, sizeof(next.hostname));
+    return settings_apply(&next);
 }
 
 esp_err_t settings_set_ap(const char *ssid, bool open, const char *password, uint8_t channel, uint8_t max_clients)
 {
-    if (!valid_printable(ssid, 32, false) || channel < 1 || channel > 13 || max_clients < 1 || max_clients > 4) return ESP_ERR_INVALID_ARG;
-    if (!open) {
-        size_t n = password ? strlen(password) : 0;
-        if (n < 8 || n > 63 || !valid_printable(password, 63, false)) return ESP_ERR_INVALID_ARG;
-    }
-    prisma_settings_t old = s_cfg;
-    strlcpy(s_cfg.ap_ssid, ssid, sizeof(s_cfg.ap_ssid));
-    s_cfg.ap_open = open;
-    s_cfg.ap_channel = channel;
-    s_cfg.ap_max_clients = max_clients;
-    if (open) s_cfg.ap_password[0] = 0;
-    else strlcpy(s_cfg.ap_password, password, sizeof(s_cfg.ap_password));
-    esp_err_t e = save();
-    if (e != ESP_OK) s_cfg = old;
-    return e;
+    prisma_settings_t next = s_cfg;
+    strlcpy(next.ap_ssid, ssid ? ssid : "", sizeof(next.ap_ssid));
+    next.ap_open = open;
+    next.ap_channel = channel;
+    next.ap_max_clients = max_clients;
+    if (open) next.ap_password[0] = 0;
+    else strlcpy(next.ap_password, password ? password : "", sizeof(next.ap_password));
+    return settings_apply(&next);
 }
 
 esp_err_t settings_set_sta(const char *ssid, const char *password, bool enabled)
 {
-    if (enabled && (!valid_printable(ssid, 32, false) || !valid_printable(password ? password : "", 63, true))) return ESP_ERR_INVALID_ARG;
-    prisma_settings_t old = s_cfg;
-    s_cfg.sta_enabled = enabled;
+    prisma_settings_t next = s_cfg;
+    next.sta_enabled = enabled;
     if (enabled) {
-        strlcpy(s_cfg.sta_ssid, ssid, sizeof(s_cfg.sta_ssid));
-        strlcpy(s_cfg.sta_password, password ? password : "", sizeof(s_cfg.sta_password));
+        strlcpy(next.sta_ssid, ssid ? ssid : "", sizeof(next.sta_ssid));
+        strlcpy(next.sta_password, password ? password : "", sizeof(next.sta_password));
     } else {
-        s_cfg.sta_ssid[0] = 0;
-        s_cfg.sta_password[0] = 0;
+        next.sta_ssid[0] = 0;
+        next.sta_password[0] = 0;
     }
-    esp_err_t e = save();
-    if (e != ESP_OK) s_cfg = old;
-    return e;
+    return settings_apply(&next);
 }
 
 esp_err_t settings_clear_sta(void)
