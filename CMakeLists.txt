@@ -1,4 +1,4 @@
 cmake_minimum_required(VERSION 3.16)
-set(PROJECT_VER "008.0")
+set(PROJECT_VER "008.1")
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(prisma_camera)
