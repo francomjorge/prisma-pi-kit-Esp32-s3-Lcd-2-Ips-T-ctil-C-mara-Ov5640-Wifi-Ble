@@ -41,17 +41,17 @@ static void draw(int page,int phase){
   tc(58,"PRISMA P",4,wh);uint16_t pal[]={rgb(255,191,69),rgb(137,239,194),rgb(250,246,220),rgb(196,142,84),rgb(100,185,168)};
   tc(110,"CAMERA",3,pal[phase%5]);rect(42,155,156,2,accent);tc(184,"TAP FOR GLITCH",1,wh);tc(214,"SWIPE TO CONTINUE",1,dim);tc(255,"BUILD 002",1,accent);
  }else if(page==1){
-  char sensor[28],pid[20];
+  char sensor[40],pid[20];
   tc(22,"PRISMA P",3,wh);tc(58,"CAMERA DIAGNOSTIC",1,accent);
   tc(104,camera_ready?"CAMERA READY":camera_probed?"CAMERA ERROR":"CAMERA PROBING",2,camera_ready?ok:accent);
-  snprintf(sensor,sizeof(sensor),"SENSOR %s",camera_sensor);tc(146,sensor,1,camera_ready?wh:dim);
+  snprintf(sensor,sizeof(sensor),"SENSOR %s",camera_sensor_name);tc(146,sensor,1,camera_ready?wh:dim);
   snprintf(pid,sizeof(pid),"PID %04X",camera_pid);tc(170,pid,1,camera_ready?wh:dim);
   tc(205,camera_expected?"OV5640 CONFIRMED":"OV5640 NOT CONFIRMED",1,camera_expected?ok:dim);
   tc(250,"STREAM PENDING",1,dim);
  }else{
-  char cam[30];
+  char cam[40];
   tc(20,"ADMINISTRATION",2,accent);tc(67,network_ready?"WIFI AP ACTIVE":"NETWORK ERROR",1,wh);tc(99,app_ssid,1,wh);tc(132,"WIFI PASSWORD",1,dim);tc(154,app_password,2,accent);tc(202,network_ready?"192.168.4.1":"CHECK USB LOG",2,wh);
-  snprintf(cam,sizeof(cam),"CAMERA %s",camera_ready?camera_sensor:camera_probed?"ERROR":"PROBING");tc(239,cam,1,camera_ready?ok:dim);tc(259,"MDNS PENDING",1,dim);
+  snprintf(cam,sizeof(cam),"CAMERA %s",camera_ready?camera_sensor_name:camera_probed?"ERROR":"PROBING");tc(239,cam,1,camera_ready?ok:dim);tc(259,"MDNS PENDING",1,dim);
  }
  for(int i=0;i<3;i++){
   rect(96+i*20,297,8,8,i==page?accent:dim);
