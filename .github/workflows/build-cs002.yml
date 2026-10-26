@@ -1,4 +1,4 @@
-name: Build Camera Synth CS002
+name: Build Camera Synth CS003
 on:
   push:
     branches: [main]
@@ -11,19 +11,19 @@ jobs:
     container: espressif/idf:v5.3.2
     steps:
       - uses: actions/checkout@v4
-      - name: Compile and package CS002
+      - name: Compile and package CS003
         shell: bash
         run: |
           . /opt/esp/idf/export.sh
           idf.py build
           cd build
-          esptool.py --chip esp32s3 merge_bin -o PRISMA-PI-CAMERA-SYNTH-CS002-factory.bin @flash_args
-          sha256sum PRISMA-PI-CAMERA-SYNTH-CS002-factory.bin > SHA256SUMS.txt
+          esptool.py --chip esp32s3 merge_bin -o PRISMA-PI-CAMERA-SYNTH-CS003-factory.bin @flash_args
+          sha256sum PRISMA-PI-CAMERA-SYNTH-CS003-factory.bin > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: PRISMA-PI-CAMERA-SYNTH-CS002-${{ github.run_number }}
+          name: PRISMA-PI-CAMERA-SYNTH-CS003-${{ github.run_number }}
           path: |
-            build/PRISMA-PI-CAMERA-SYNTH-CS002-factory.bin
+            build/PRISMA-PI-CAMERA-SYNTH-CS003-factory.bin
             build/SHA256SUMS.txt
             build/flasher_args.json
             build/prisma_camera_synth.elf
