@@ -1,7 +1,7 @@
 name: Build Camera Synth CS006
 on:
   push:
-    branches: [main]
+    branches: [main, cs006-platform-health]
   workflow_dispatch:
 permissions:
   contents: read
