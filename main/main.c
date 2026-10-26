@@ -3,7 +3,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 
-static const char *TAG = "CS001";
+static const char *TAG = "CS002";
 
 static bool init_nvs(void)
 {
@@ -18,9 +18,7 @@ static bool init_nvs(void)
 void app_main(void)
 {
     ESP_LOGI(TAG, "%s / %s starting", PRISMA_PRODUCT, PRISMA_BUILD_ID);
-
-    bool nvs_ok = init_nvs();
-    if (!nvs_ok) ESP_LOGE(TAG, "NVS initialization failed; continuing in degraded mode");
+    if (!init_nvs()) ESP_LOGE(TAG, "NVS initialization failed; continuing in degraded mode");
 
     esp_err_t err = display_start();
     if (err != ESP_OK) ESP_LOGE(TAG, "Display init failed: %s", esp_err_to_name(err));
@@ -31,6 +29,9 @@ void app_main(void)
         return;
     }
 
+    err = discovery_start();
+    if (err != ESP_OK) ESP_LOGW(TAG, "mDNS init failed; IP access remains available: %s", esp_err_to_name(err));
+
     err = web_start();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "HTTP server failed: %s", esp_err_to_name(err));
@@ -38,9 +39,12 @@ void app_main(void)
     }
 
     network_state_t net = {0};
+    discovery_state_t discovery = {0};
     network_get_state(&net);
-    ESP_LOGI(TAG, "READY display=%s AP=%s IP=%s HTTP=80",
+    discovery_get_state(&discovery);
+    ESP_LOGI(TAG, "READY display=%s AP=%s IP=%s HTTP=80 mDNS=%s",
              display_ready() ? "ready" : "error",
              net.ssid[0] ? net.ssid : "-",
-             net.ip[0] ? net.ip : "-");
+             net.ip[0] ? net.ip : "-",
+             discovery.ready ? discovery.url : "unavailable");
 }
