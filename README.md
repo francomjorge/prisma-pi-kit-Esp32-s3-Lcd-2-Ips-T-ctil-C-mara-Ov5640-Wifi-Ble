@@ -4,7 +4,7 @@ Appliance independiente basado en Waveshare ESP32-S3-Touch-LCD-2. Modelo y resol
 
 ## Estado
 
-Planificación y documentación inicial. Este repositorio todavía no contiene firmware, workflow de compilación ni binario validado. Ninguna prueba de hardware se ha ejecutado desde este proyecto.
+Build 001: base de firmware y workflow de compilación añadidos. Ver [alcance y prueba](docs/BUILD_001.md). La validación física está pendiente. Cámara desactivada.
 
 ## Base funcional
 
