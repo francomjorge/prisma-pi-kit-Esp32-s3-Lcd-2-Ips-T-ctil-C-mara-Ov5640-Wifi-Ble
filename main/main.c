@@ -20,8 +20,8 @@
 char app_ssid[32],app_password[16];
 bool network_ready=false;
 static esp_netif_t *ap;
-extern const char html_start[] asm("_binary_web_admin_html_start");
-extern const char html_end[] asm("_binary_web_admin_html_end");
+extern const char html_start[] asm("_binary_admin_html_start");
+extern const char html_end[] asm("_binary_admin_html_end");
 static esp_err_t page(httpd_req_t *r){
  httpd_resp_set_type(r,"text/html; charset=utf-8");
  httpd_resp_set_hdr(r,"Cache-Control","no-store");

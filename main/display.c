@@ -39,11 +39,11 @@ static void draw(int page,int phase){
  uint16_t wh=rgb(240,245,235),accent=rgb(255,191,69),dim=rgb(77,88,94);rect(0,0,W,H,rgb(7,13,18));
  if(page==0){
   tc(58,"PRISMA P",4,wh);uint16_t pal[]={rgb(255,191,69),rgb(137,239,194),rgb(250,246,220),rgb(196,142,84),rgb(100,185,168)};
-  tc(110,"CAMARA",3,pal[phase%5]);rect(42,155,156,2,accent);tc(184,"TOCA PARA GLITCH",1,wh);tc(214,"DESLIZA PARA SEGUIR",1,dim);tc(255,"BUILD 001",1,accent);
+  tc(110,"CAMERA",3,pal[phase%5]);rect(42,155,156,2,accent);tc(184,"TAP FOR GLITCH",1,wh);tc(214,"SWIPE TO CONTINUE",1,dim);tc(255,"BUILD 001",1,accent);
  }else if(page==1){
-  tc(25,"PRISMA P",3,wh);tc(65,"CAMARA",2,accent);tc(120,"CAPTURA PENDIENTE",2,dim);tc(156,"STREAM PENDIENTE",2,dim);tc(192,"FX PENDIENTE",2,dim);tc(252,"BASE DEL PRODUCTO",1,wh);
+  tc(25,"PRISMA P",3,wh);tc(65,"CAMERA",2,accent);tc(120,"CAPTURE PENDING",2,dim);tc(156,"STREAM PENDING",2,dim);tc(192,"FX PENDING",2,dim);tc(252,"PRODUCT BASE",1,wh);
  }else{
-  tc(20,"ADMINISTRACION",2,accent);tc(67,network_ready?"WIFI AP ACTIVO":"ERROR DE RED",1,wh);tc(99,app_ssid,1,wh);tc(132,"CLAVE WIFI",1,dim);tc(154,app_password,2,accent);tc(202,network_ready?"192.168.4.1":"VER LOG USB",2,wh);tc(239,"CAMARA DESACTIVADA",1,dim);tc(259,"MDNS PENDIENTE",1,dim);
+  tc(20,"ADMINISTRATION",2,accent);tc(67,network_ready?"WIFI AP ACTIVE":"NETWORK ERROR",1,wh);tc(99,app_ssid,1,wh);tc(132,"WIFI PASSWORD",1,dim);tc(154,app_password,2,accent);tc(202,network_ready?"192.168.4.1":"CHECK USB LOG",2,wh);tc(239,"CAMERA DISABLED",1,dim);tc(259,"MDNS PENDING",1,dim);
  }
  for(int i=0;i<3;i++){
   rect(96+i*20,297,8,8,i==page?accent:dim);
