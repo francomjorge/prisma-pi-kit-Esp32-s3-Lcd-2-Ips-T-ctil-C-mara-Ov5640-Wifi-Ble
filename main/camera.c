@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "esp_camera.h"
+#include "img_converters.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -20,6 +21,10 @@ uint16_t camera_frame_width=0,camera_frame_height=0;
 uint32_t camera_frame_bytes=0,camera_capture_ms=0;
 char camera_frame_format[12]="pending";
 char camera_capture_error[64]="not attempted";
+bool camera_preview_active=false;
+uint32_t camera_preview_frames=0,camera_preview_capture_ms=0,camera_preview_decode_ms=0,camera_preview_frame_ms=0;
+uint16_t camera_preview_fps=0;
+char camera_preview_error[64]="not started";
 
 const char *camera_state_text(void){
  if(!camera_probed)return "probing";
@@ -30,6 +35,16 @@ const char *camera_capture_state_text(void){
  if(!camera_capture_attempted)return "pending";
  return camera_capture_ready?"ready":"error";
 }
+
+const char *camera_preview_state_text(void){
+ if(camera_preview_active)return "active";
+ if(camera_preview_frames>0)return "ready";
+ if(camera_capture_ready)return "available";
+ if(camera_capture_attempted)return "unavailable";
+ return "pending";
+}
+
+void camera_preview_set_active(bool active){camera_preview_active=active;}
 
 static const char *format_name(pixformat_t f){
  switch(f){
@@ -73,6 +88,47 @@ esp_err_t camera_capture_test(void){
  camera_capture_ready=true;
  strlcpy(camera_capture_error,"none",sizeof(camera_capture_error));
  ESP_LOGI(TAG,"Capture test OK: %ux%u %s %u bytes in %u ms",camera_frame_width,camera_frame_height,camera_frame_format,(unsigned)camera_frame_bytes,(unsigned)camera_capture_ms);
+ return ESP_OK;
+}
+
+esp_err_t camera_preview_frame(uint8_t *out,size_t out_bytes){
+ if(!camera_ready||!camera_capture_ready){
+  strlcpy(camera_preview_error,"camera/frame test not ready",sizeof(camera_preview_error));
+  return ESP_ERR_INVALID_STATE;
+ }
+ if(!out||out_bytes<(320U*240U*2U)){
+  strlcpy(camera_preview_error,"preview buffer too small",sizeof(camera_preview_error));
+  return ESP_ERR_INVALID_SIZE;
+ }
+ int64_t start=esp_timer_get_time();
+ camera_fb_t *fb=esp_camera_fb_get();
+ int64_t captured=esp_timer_get_time();
+ camera_preview_capture_ms=(uint32_t)((captured-start+999)/1000);
+ if(!fb){
+  strlcpy(camera_preview_error,"preview frame unavailable",sizeof(camera_preview_error));
+  ESP_LOGE(TAG,"Preview failed: %s",camera_preview_error);
+  return ESP_FAIL;
+ }
+ if(fb->format!=PIXFORMAT_JPEG||fb->width!=320||fb->height!=240){
+  snprintf(camera_preview_error,sizeof(camera_preview_error),"unexpected %ux%u %s",(unsigned)fb->width,(unsigned)fb->height,format_name(fb->format));
+  esp_camera_fb_return(fb);
+  ESP_LOGE(TAG,"Preview failed: %s",camera_preview_error);
+  return ESP_ERR_INVALID_RESPONSE;
+ }
+ int64_t decode_start=esp_timer_get_time();
+ bool ok=jpg2rgb565(fb->buf,fb->len,out,JPG_SCALE_NONE);
+ int64_t done=esp_timer_get_time();
+ esp_camera_fb_return(fb);
+ camera_preview_decode_ms=(uint32_t)((done-decode_start+999)/1000);
+ camera_preview_frame_ms=(uint32_t)((done-start+999)/1000);
+ camera_preview_fps=camera_preview_frame_ms?((uint16_t)(1000U/camera_preview_frame_ms)):0;
+ if(!ok){
+  strlcpy(camera_preview_error,"jpeg decode failed",sizeof(camera_preview_error));
+  ESP_LOGE(TAG,"Preview failed: %s",camera_preview_error);
+  return ESP_FAIL;
+ }
+ camera_preview_frames++;
+ strlcpy(camera_preview_error,"none",sizeof(camera_preview_error));
  return ESP_OK;
 }
 
