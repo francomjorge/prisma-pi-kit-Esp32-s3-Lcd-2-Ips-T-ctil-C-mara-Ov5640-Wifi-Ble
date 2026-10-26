@@ -10,15 +10,15 @@
 #include "app.h"
 #include "identity.h"
 
-static const char *TAG = "CS001_WEB";
+static const char *TAG = "CS002_WEB";
 static httpd_handle_t s_server;
 
 extern const char home_start[] asm("_binary_home_html_start");
 extern const char home_end[] asm("_binary_home_html_end");
 extern const char admin_start[] asm("_binary_admin_html_start");
 extern const char admin_end[] asm("_binary_admin_html_end");
-extern const char camera_sync_start[] asm("_binary_camera_sync_html_start");
-extern const char camera_sync_end[] asm("_binary_camera_sync_html_end");
+extern const char camera_synth_start[] asm("_binary_camera_synth_html_start");
+extern const char camera_synth_end[] asm("_binary_camera_synth_html_end");
 extern const char shared_css_start[] asm("_binary_shared_css_start");
 extern const char shared_css_end[] asm("_binary_shared_css_end");
 
@@ -31,34 +31,32 @@ static esp_err_t send_embedded(httpd_req_t *req, const char *start, const char *
     return httpd_resp_send(req, start, len);
 }
 
-static esp_err_t home_get(httpd_req_t *req)
-{
-    return send_embedded(req, home_start, home_end, "text/html; charset=utf-8");
-}
+static esp_err_t home_get(httpd_req_t *req) { return send_embedded(req, home_start, home_end, "text/html; charset=utf-8"); }
+static esp_err_t admin_get(httpd_req_t *req) { return send_embedded(req, admin_start, admin_end, "text/html; charset=utf-8"); }
+static esp_err_t camera_synth_get(httpd_req_t *req) { return send_embedded(req, camera_synth_start, camera_synth_end, "text/html; charset=utf-8"); }
 
-static esp_err_t admin_get(httpd_req_t *req)
+static esp_err_t camera_sync_alias_get(httpd_req_t *req)
 {
-    return send_embedded(req, admin_start, admin_end, "text/html; charset=utf-8");
-}
-
-static esp_err_t camera_sync_get(httpd_req_t *req)
-{
-    return send_embedded(req, camera_sync_start, camera_sync_end, "text/html; charset=utf-8");
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "/camera-synth");
+    return httpd_resp_send(req, NULL, 0);
 }
 
 static esp_err_t css_get(httpd_req_t *req)
 {
-    httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=300");
     size_t len = (size_t)(shared_css_end - shared_css_start);
     if (len && shared_css_start[len - 1] == '\0') --len;
     httpd_resp_set_type(req, "text/css; charset=utf-8");
+    httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=300");
     return httpd_resp_send(req, shared_css_start, len);
 }
 
 static esp_err_t status_get(httpd_req_t *req)
 {
     network_state_t net = {0};
+    discovery_state_t discovery = {0};
     network_get_state(&net);
+    discovery_get_state(&discovery);
 
     esp_chip_info_t chip = {0};
     esp_chip_info(&chip);
@@ -71,7 +69,7 @@ static esp_err_t status_get(httpd_req_t *req)
     int64_t uptime_s = esp_timer_get_time() / 1000000;
     bool healthy = display_ready() && net.ready;
 
-    char json[2300];
+    char json[2700];
     int n = snprintf(json, sizeof(json),
         "{"
         "\"schema\":\"prisma.status.v1\","
@@ -81,25 +79,28 @@ static esp_err_t status_get(httpd_req_t *req)
         "\"firmware\":\"%s\","
         "\"build\":\"%s\","
         "\"hostname\":\"%s\","
+        "\"mdns_url\":\"%s\","
         "\"uptime_s\":%" PRId64 ","
         "\"health\":\"%s\","
         "\"device\":{\"model\":\"ESP32-S3\",\"cores\":%d,\"revision\":%d,\"flash_bytes\":%" PRIu32 ",\"flash_read_ok\":%s},"
         "\"memory\":{\"heap_free\":%" PRIu32 ",\"heap_min\":%" PRIu32 ",\"psram_total\":%u,\"psram_free\":%u},"
         "\"display\":{\"available\":true,\"enabled\":%s,\"state\":\"%s\",\"controller\":\"ST7789\",\"width\":240,\"height\":320},"
         "\"softap\":{\"available\":true,\"enabled\":%s,\"open\":true,\"ssid\":\"%s\",\"ip\":\"%s\",\"clients\":%u,\"max_clients\":4},"
+        "\"mdns\":{\"available\":true,\"enabled\":%s,\"state\":\"%s\",\"hostname\":\"%s\",\"url\":\"%s\"},"
         "\"camera\":{\"available\":true,\"enabled\":false,\"state\":\"not_initialized\",\"sensor\":\"OV5640\"},"
         "\"touch\":{\"available\":true,\"enabled\":false,\"state\":\"not_initialized\",\"controller\":\"CST816\"},"
         "\"stream\":{\"available\":false,\"enabled\":false,\"state\":\"planned\"},"
-        "\"mdns\":{\"available\":false,\"enabled\":false,\"state\":\"deferred_cs002\"},"
         "\"esp_now\":{\"available\":false,\"enabled\":false,\"state\":\"planned\"},"
         "\"ble\":{\"available\":false,\"enabled\":false,\"state\":\"planned\"}"
         "}",
         PRISMA_PRODUCT, PRISMA_APPLICATION, PRISMA_VENDOR, PRISMA_FIRMWARE_VERSION,
-        PRISMA_BUILD_ID, PRISMA_HOSTNAME, uptime_s, healthy ? "ready" : "degraded",
+        PRISMA_BUILD_ID, PRISMA_HOSTNAME, PRISMA_MDNS_URL, uptime_s, healthy ? "ready" : "degraded",
         chip.cores, chip.revision, flash_bytes, flash_ok ? "true" : "false",
         heap_free, heap_min, (unsigned)psram_total, (unsigned)psram_free,
         display_ready() ? "true" : "false", display_ready() ? "ready" : "error",
-        net.ready ? "true" : "false", net.ssid, net.ip, net.clients);
+        net.ready ? "true" : "false", net.ssid, net.ip, net.clients,
+        discovery.ready ? "true" : "false", discovery.ready ? "ready" : "error",
+        PRISMA_HOSTNAME, PRISMA_MDNS_URL);
 
     if (n < 0 || n >= (int)sizeof(json)) return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "status overflow");
     httpd_resp_set_type(req, "application/json");
@@ -110,20 +111,22 @@ static esp_err_t status_get(httpd_req_t *req)
 static esp_err_t capabilities_get(httpd_req_t *req)
 {
     network_state_t net = {0};
+    discovery_state_t discovery = {0};
     network_get_state(&net);
+    discovery_get_state(&discovery);
 
-    char json[2500];
+    char json[2600];
     int n = snprintf(json, sizeof(json),
         "{\"schema\":\"prisma.capabilities.v1\",\"product\":\"%s\",\"capabilities\":["
         "{\"id\":\"display\",\"available\":true,\"enabled\":%s,\"state\":\"%s\"},"
         "{\"id\":\"softap\",\"available\":true,\"enabled\":%s,\"state\":\"%s\"},"
         "{\"id\":\"http\",\"available\":true,\"enabled\":true,\"state\":\"ready\"},"
+        "{\"id\":\"mdns\",\"available\":true,\"enabled\":%s,\"state\":\"%s\"},"
         "{\"id\":\"camera\",\"available\":true,\"enabled\":false,\"state\":\"not_initialized\"},"
         "{\"id\":\"touch\",\"available\":true,\"enabled\":false,\"state\":\"not_initialized\"},"
         "{\"id\":\"snapshot\",\"available\":false,\"enabled\":false,\"state\":\"planned\"},"
         "{\"id\":\"stream\",\"available\":false,\"enabled\":false,\"state\":\"planned\"},"
         "{\"id\":\"wifi_sta\",\"available\":false,\"enabled\":false,\"state\":\"planned\"},"
-        "{\"id\":\"mdns\",\"available\":false,\"enabled\":false,\"state\":\"deferred_cs002\"},"
         "{\"id\":\"esp_now\",\"available\":false,\"enabled\":false,\"state\":\"planned\"},"
         "{\"id\":\"ble\",\"available\":false,\"enabled\":false,\"state\":\"planned\"},"
         "{\"id\":\"storage\",\"available\":false,\"enabled\":false,\"state\":\"not_validated\"},"
@@ -134,7 +137,8 @@ static esp_err_t capabilities_get(httpd_req_t *req)
         "]}",
         PRISMA_PRODUCT,
         display_ready() ? "true" : "false", display_ready() ? "ready" : "error",
-        net.ready ? "true" : "false", net.ready ? "ready" : "error");
+        net.ready ? "true" : "false", net.ready ? "ready" : "error",
+        discovery.ready ? "true" : "false", discovery.ready ? "ready" : "error");
 
     if (n < 0 || n >= (int)sizeof(json)) return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "capabilities overflow");
     httpd_resp_set_type(req, "application/json");
@@ -145,10 +149,9 @@ static esp_err_t capabilities_get(httpd_req_t *req)
 esp_err_t web_start(void)
 {
     if (s_server) return ESP_OK;
-
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.stack_size = 8192;
-    cfg.max_uri_handlers = 8;
+    cfg.max_uri_handlers = 9;
     cfg.max_open_sockets = 7;
     cfg.lru_purge_enable = true;
 
@@ -158,7 +161,8 @@ esp_err_t web_start(void)
     const httpd_uri_t routes[] = {
         {.uri = "/", .method = HTTP_GET, .handler = home_get},
         {.uri = "/admin", .method = HTTP_GET, .handler = admin_get},
-        {.uri = "/camera-sync", .method = HTTP_GET, .handler = camera_sync_get},
+        {.uri = "/camera-synth", .method = HTTP_GET, .handler = camera_synth_get},
+        {.uri = "/camera-sync", .method = HTTP_GET, .handler = camera_sync_alias_get},
         {.uri = "/shared.css", .method = HTTP_GET, .handler = css_get},
         {.uri = "/api/v1/status", .method = HTTP_GET, .handler = status_get},
         {.uri = "/api/v1/capabilities", .method = HTTP_GET, .handler = capabilities_get}
@@ -168,7 +172,6 @@ esp_err_t web_start(void)
         e = httpd_register_uri_handler(s_server, &routes[i]);
         if (e != ESP_OK) return e;
     }
-
-    ESP_LOGI(TAG, "HTTP ready: / /admin /camera-sync /api/v1/status /api/v1/capabilities");
+    ESP_LOGI(TAG, "HTTP ready: / /admin /camera-synth (+ /camera-sync alias) API v1");
     return ESP_OK;
 }
