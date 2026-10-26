@@ -25,8 +25,9 @@ jobs:
         if: steps.compile.outputs.status == '0'
         shell: bash
         run: |
+          . /opt/esp/idf/export.sh
           cd build
-          esptool.py --chip esp32s3 merge_bin -o PRISMA-PI-CAMERA-SYNTH-CS006-factory.bin @flash_args
+          python -m esptool --chip esp32s3 merge_bin -o PRISMA-PI-CAMERA-SYNTH-CS006-factory.bin @flash_args
           sha256sum PRISMA-PI-CAMERA-SYNTH-CS006-factory.bin > SHA256SUMS.txt
       - name: Upload CS006 artifacts and diagnostic log
         if: always()
