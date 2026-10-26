@@ -3,7 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "esp_err.h"
-#define APP_BUILD "004.0"
+#define APP_BUILD "005.0"
 extern char app_ssid[32], app_password[16];
 extern bool network_ready;
 extern bool camera_probed,camera_ready,camera_expected;
@@ -18,6 +18,10 @@ extern bool camera_preview_active;
 extern uint32_t camera_preview_frames,camera_preview_capture_ms,camera_preview_decode_ms,camera_preview_frame_ms;
 extern uint16_t camera_preview_fps;
 extern char camera_preview_error[64];
+extern uint8_t camera_jpeg_quality,camera_fb_count;
+extern char camera_grab_mode[16];
+extern uint32_t ui_preview_display_ms,ui_preview_loop_ms,touch_taps,touch_swipes;
+extern uint16_t ui_preview_fps,touch_poll_ms,touch_swipe_threshold_px,touch_debounce_ms;
 esp_err_t display_start(void);
 bool display_ready(void);
 bool touch_ready(void);

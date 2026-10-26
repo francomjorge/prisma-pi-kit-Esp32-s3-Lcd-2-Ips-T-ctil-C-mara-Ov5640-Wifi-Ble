@@ -25,6 +25,8 @@ bool camera_preview_active=false;
 uint32_t camera_preview_frames=0,camera_preview_capture_ms=0,camera_preview_decode_ms=0,camera_preview_frame_ms=0;
 uint16_t camera_preview_fps=0;
 char camera_preview_error[64]="not started";
+uint8_t camera_jpeg_quality=15,camera_fb_count=1;
+char camera_grab_mode[16]="when-empty";
 
 const char *camera_state_text(void){
  if(!camera_probed)return "probing";
@@ -115,6 +117,7 @@ esp_err_t camera_preview_frame(uint8_t *out,size_t out_bytes){
   ESP_LOGE(TAG,"Preview failed: %s",camera_preview_error);
   return ESP_ERR_INVALID_RESPONSE;
  }
+ camera_frame_bytes=(uint32_t)fb->len;
  int64_t decode_start=esp_timer_get_time();
  bool ok=jpg2rgb565(fb->buf,fb->len,out,JPG_SCALE_NONE);
  int64_t done=esp_timer_get_time();
@@ -133,6 +136,7 @@ esp_err_t camera_preview_frame(uint8_t *out,size_t out_bytes){
 }
 
 esp_err_t camera_start(void){
+ bool psram=heap_caps_get_total_size(MALLOC_CAP_SPIRAM)>0;
  camera_config_t cfg={
   .pin_pwdn=17,
   .pin_reset=-1,
@@ -155,13 +159,20 @@ esp_err_t camera_start(void){
   .ledc_channel=LEDC_CHANNEL_0,
   .pixel_format=PIXFORMAT_JPEG,
   .frame_size=FRAMESIZE_QVGA,
-  .jpeg_quality=12,
-  .fb_count=1,
+  .jpeg_quality=15,
+  .fb_count=2,
   .fb_location=CAMERA_FB_IN_PSRAM,
-  .grab_mode=CAMERA_GRAB_WHEN_EMPTY,
+  .grab_mode=CAMERA_GRAB_LATEST,
   .sccb_i2c_port=-1
  };
- if(heap_caps_get_total_size(MALLOC_CAP_SPIRAM)==0)cfg.fb_location=CAMERA_FB_IN_DRAM;
+ if(!psram){
+  cfg.fb_location=CAMERA_FB_IN_DRAM;
+  cfg.fb_count=1;
+  cfg.grab_mode=CAMERA_GRAB_WHEN_EMPTY;
+ }
+ camera_jpeg_quality=(uint8_t)cfg.jpeg_quality;
+ camera_fb_count=(uint8_t)cfg.fb_count;
+ strlcpy(camera_grab_mode,cfg.grab_mode==CAMERA_GRAB_LATEST?"latest":"when-empty",sizeof(camera_grab_mode));
  strlcpy(camera_sensor_name,"NOT DETECTED",sizeof(camera_sensor_name));
  strlcpy(camera_error,"initializing",sizeof(camera_error));
  esp_err_t e=esp_camera_init(&cfg);
@@ -189,6 +200,6 @@ esp_err_t camera_start(void){
  camera_ready=true;
  camera_probed=true;
  strlcpy(camera_error,"none",sizeof(camera_error));
- ESP_LOGI(TAG,"Sensor %s PID=0x%04X MID=%02X%02X VER=%02X expected_OV5640=%s",camera_sensor_name,camera_pid,camera_midh,camera_midl,camera_ver,camera_expected?"yes":"no");
+ ESP_LOGI(TAG,"Sensor %s PID=0x%04X MID=%02X%02X VER=%02X OV5640=%s fb=%u quality=%u grab=%s",camera_sensor_name,camera_pid,camera_midh,camera_midl,camera_ver,camera_expected?"yes":"no",camera_fb_count,camera_jpeg_quality,camera_grab_mode);
  return ESP_OK;
 }
