@@ -11,20 +11,36 @@ jobs:
     container: espressif/idf:v5.3.2
     steps:
       - uses: actions/checkout@v4
-      - name: Compile and package CS006
+      - name: Compile CS006
+        id: compile
         shell: bash
         run: |
+          set +e
           . /opt/esp/idf/export.sh
-          idf.py build
+          idf.py build 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Package CS006
+        if: steps.compile.outputs.status == '0'
+        shell: bash
+        run: |
           cd build
           esptool.py --chip esp32s3 merge_bin -o PRISMA-PI-CAMERA-SYNTH-CS006-factory.bin @flash_args
           sha256sum PRISMA-PI-CAMERA-SYNTH-CS006-factory.bin > SHA256SUMS.txt
-      - uses: actions/upload-artifact@v4
+      - name: Upload CS006 artifacts and diagnostic log
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: PRISMA-PI-CAMERA-SYNTH-CS006-${{ github.run_number }}
           path: |
+            build.log
             build/PRISMA-PI-CAMERA-SYNTH-CS006-factory.bin
             build/SHA256SUMS.txt
             build/flasher_args.json
             build/prisma_camera_synth.elf
-          if-no-files-found: error
+          if-no-files-found: warn
+      - name: Fail workflow when compile failed
+        if: steps.compile.outputs.status != '0'
+        shell: bash
+        run: exit 1
