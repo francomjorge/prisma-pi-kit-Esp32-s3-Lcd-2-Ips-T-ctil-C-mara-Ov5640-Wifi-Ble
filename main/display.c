@@ -148,7 +148,7 @@ static void draw(int page, int phase) {
   tc(211, "SWIPE TO CONTINUE", 1, dim);
   tc(254, "BUILD 007", 1, accent);
  } else if (page == 1) {
-  char sensor[40], pid[20], src[32], pv[40];
+  char sensor[40], pid[32], src[32], pv[40];
   tc(14, "PRISMA-PI CAMERA", 2, wh);
   tc(43, "LOCAL PREVIEW", 1, accent);
   tc(72, camera_ready ? "CAMERA READY" : camera_probed ? "CAMERA ERROR" : "CAMERA PROBING", 2, camera_ready ? ok : accent);
