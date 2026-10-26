@@ -45,7 +45,10 @@ static void draw(int page,int phase){
  }else{
   tc(20,"ADMINISTRACION",2,accent);tc(67,network_ready?"WIFI AP ACTIVO":"ERROR DE RED",1,wh);tc(99,app_ssid,1,wh);tc(132,"CLAVE WIFI",1,dim);tc(154,app_password,2,accent);tc(202,network_ready?"192.168.4.1":"VER LOG USB",2,wh);tc(239,"CAMARA DESACTIVADA",1,dim);tc(259,"MDNS PENDIENTE",1,dim);
  }
- for(int i=0;i<3;i++)rect(96+i*20,297,8,8,i==page?accent:dim);show();
+ for(int i=0;i<3;i++){
+  rect(96+i*20,297,8,8,i==page?accent:dim);
+ }
+ show();
 }
 static void glitch(int x,int y){
  uint16_t pal[]={rgb(255,191,69),rgb(137,239,194),rgb(250,246,220),rgb(196,142,84),rgb(100,185,168)};
