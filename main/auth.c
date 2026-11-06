@@ -214,7 +214,7 @@ static esp_err_t guarded_handler(httpd_req_t *req)
     if (!route || !route->handler) return ESP_FAIL;
 
     if (s_locked && !public_route(req))
-        return httpd_resp_send_err(req, HTTPD_503_SERVICE_UNAVAILABLE, "admin credential error");
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "admin credential error");
 
     /* Sensitive backup must never be downloadable while admin authentication is OFF. */
     if (!s_enabled && req->method == HTTP_GET &&
