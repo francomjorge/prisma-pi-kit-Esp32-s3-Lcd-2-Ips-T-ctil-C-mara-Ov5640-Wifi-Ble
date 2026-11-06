@@ -12,6 +12,24 @@ static const char *NS = "prisma_cfg";
 static const char *KEY = "settings";
 static prisma_settings_t s_cfg;
 
+/* Stable per-board default mDNS label. Does not change after a normal reboot.
+ * Users may still choose a custom hostname in Admin -> Network. */
+static void default_unique_hostname(char out[33])
+{
+    uint8_t mac[6] = {0};
+    esp_err_t e = esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
+    if (e != ESP_OK) e = esp_efuse_mac_get_default(mac);
+    if (e == ESP_OK) {
+        snprintf(out, 33, PRISMA_HOSTNAME "-%02x%02x%02x",
+                 mac[3], mac[4], mac[5]);
+    } else {
+        /* Explicitly report fallback; never invent a supposedly unique ID. */
+        strlcpy(out, PRISMA_HOSTNAME, 33);
+        ESP_LOGE(TAG, "Board MAC unavailable; unique hostname not generated");
+    }
+}
+
+
 static bool valid_hostname(const char *s)
 {
     size_t n = s ? strlen(s) : 0;
@@ -58,7 +76,7 @@ static void defaults(void)
     memset(&s_cfg, 0, sizeof(s_cfg));
     s_cfg.schema = PRISMA_SETTINGS_SCHEMA;
     strlcpy(s_cfg.friendly_name, PRISMA_PRODUCT, sizeof(s_cfg.friendly_name));
-    strlcpy(s_cfg.hostname, PRISMA_HOSTNAME, sizeof(s_cfg.hostname));
+    default_unique_hostname(s_cfg.hostname);
     uint8_t mac[6] = {0};
     if (esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP) == ESP_OK) {
         snprintf(s_cfg.ap_ssid, sizeof(s_cfg.ap_ssid), PRISMA_AP_PREFIX "%02X%02X%02X", mac[3], mac[4], mac[5]);
@@ -94,6 +112,24 @@ esp_err_t settings_start(void)
         nvs_close(h);
         if (e == ESP_OK && size == sizeof(loaded) && valid_settings(&loaded)) {
             s_cfg = loaded;
+            /* Migrate the legacy identical default; preserve user-customized names. */
+            if (strcmp(s_cfg.hostname, PRISMA_HOSTNAME) == 0) {
+                char unique[33] = {0};
+                default_unique_hostname(unique);
+                if (strcmp(s_cfg.hostname, unique) != 0) {
+                    char prior[33];
+                    strlcpy(prior, s_cfg.hostname, sizeof(prior));
+                    strlcpy(s_cfg.hostname, unique, sizeof(s_cfg.hostname));
+                    esp_err_t saved = save();
+                    if (saved != ESP_OK) {
+                        strlcpy(s_cfg.hostname, prior, sizeof(s_cfg.hostname));
+                        ESP_LOGW(TAG, "Could not persist migrated mDNS hostname: %s",
+                                 esp_err_to_name(saved));
+                    } else {
+                        ESP_LOGI(TAG, "Migrated legacy mDNS hostname to %s", s_cfg.hostname);
+                    }
+                }
+            }
             ESP_LOGI(TAG, "Loaded settings schema=%u hostname=%s AP=%s", (unsigned)s_cfg.schema, s_cfg.hostname, s_cfg.ap_ssid);
             return ESP_OK;
         }

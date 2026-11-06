@@ -61,7 +61,7 @@ static esp_err_t status_get(httpd_req_t*r){
  "\"storage\":{\"shared_spi_ready\":%s,\"internal\":{\"mounted\":%s,\"fs\":\"%s\",\"total_bytes\":%llu,\"used_bytes\":%llu,\"free_bytes\":%llu,\"max_open_files\":%u,\"error\":\"%s\"},\"sd\":{\"mounted\":%s,\"fs\":\"%s\",\"total_bytes\":%llu,\"used_bytes\":%llu,\"free_bytes\":%llu,\"max_open_files\":%u,\"error\":\"%s\"},\"file_count_quota\":false,\"ota0\":%s,\"ota1\":%s},"
  "\"display\":{\"available\":true,\"enabled\":%s,\"state\":\"%s\",\"controller\":\"ST7789T3\",\"width\":240,\"height\":320},"
  "\"softap\":{\"available\":true,\"enabled\":%s,\"open\":%s,\"security\":\"%s\",\"ssid\":\"%s\",\"ip\":\"%s\",\"clients\":%u,\"channel\":%u,\"max_clients\":%u},"
- "\"sta\":{\"available\":true,\"configured\":%s,\"connected\":%s,\"ssid\":\"%s\",\"ip\":\"%s\",\"rssi\":%d},"
+ "\"sta\":{\"available\":true,\"configured\":%s,\"connected\":%s,\"ssid\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"connect_attempts\":%u,\"disconnect_count\":%u,\"retry_scheduled\":%s,\"retry_in_ms\":%u,\"last_disconnect_reason\":%u,\"last_connected_uptime_ms\":%llu},"
  "\"mdns\":{\"state\":\"%s\",\"url\":\"%s\"},"
  "\"touch\":{\"state\":\"%s\",\"controller\":\"%s\",\"address\":%u,\"chip_id_hex\":\"0x%02X\",\"error\":\"%s\"},"
  "\"imu\":{\"state\":\"%s\",\"controller\":\"%s\",\"address\":%u,\"address_hex\":\"0x%02X\",\"who_am_i\":%u,\"who_am_i_hex\":\"0x%02X\",\"revision\":%u,\"revision_hex\":\"0x%02X\",\"sampling_enabled\":false,\"error\":\"%s\"},"
@@ -72,7 +72,10 @@ static esp_err_t status_get(httpd_req_t*r){
  st.internal.mounted?"true":"false",st.internal.fs,(unsigned long long)st.internal.total_bytes,(unsigned long long)st.internal.used_bytes,(unsigned long long)st.internal.free_bytes,st.internal.max_open_files,ie,
  st.sd.mounted?"true":"false",st.sd.fs,(unsigned long long)st.sd.total_bytes,(unsigned long long)st.sd.used_bytes,(unsigned long long)st.sd.free_bytes,st.sd.max_open_files,se,ota0?"true":"false",ota1?"true":"false",
  display_ready()?"true":"false",display_ready()?"ready":"error",net.ready?"true":"false",net.open?"true":"false",net.open?"OPEN":"WPA2-PSK",ap,net.ip,net.clients,net.channel,net.max_clients,
- net.sta_configured?"true":"false",net.sta_connected?"true":"false",sta,net.sta_ip,net.sta_rssi,d.ready?"ready":"error",d.url,
+ net.sta_configured?"true":"false",net.sta_connected?"true":"false",sta,net.sta_ip,net.sta_rssi,
+ net.sta_connect_attempts,net.sta_disconnect_count,net.sta_retry_scheduled?"true":"false",
+ net.sta_retry_in_ms,net.sta_last_disconnect_reason,(unsigned long long)net.sta_last_connected_uptime_ms,
+ d.ready?"ready":"error",d.url,
  touch.ready?"ready":"error",touch.controller,touch.address,touch.chip_id,touch.error,
  imu.ready?"ready":"error",imu.controller,imu.address,imu.address,imu.who_am_i,imu.who_am_i,imu.revision,imu.revision,imu_e,
  cam.ready?"ready":"error",cam.sensor_name,cam.expected?"true":"false",cam.pid,(unsigned)cam.xclk_hz,(unsigned)cam.fb_count,cam.fb_location,cam.error);
@@ -83,14 +86,63 @@ static esp_err_t status_get(httpd_req_t*r){
 }
 
 static esp_err_t config_get(httpd_req_t*r){prisma_settings_t c={0};settings_get(&c);char f[80],h[80],a[80],s[80];esc_json(c.friendly_name,f,sizeof(f));esc_json(c.hostname,h,sizeof(h));esc_json(c.ap_ssid,a,sizeof(a));esc_json(c.sta_ssid,s,sizeof(s));char j[1100];snprintf(j,sizeof(j),"{\"schema\":%u,\"friendly_name\":\"%s\",\"hostname\":\"%s\",\"ap\":{\"ssid\":\"%s\",\"open\":%s,\"password_configured\":%s,\"channel\":%u,\"max_clients\":%u},\"sta\":{\"enabled\":%s,\"ssid\":\"%s\",\"password_configured\":%s}}",(unsigned)c.schema,f,h,a,c.ap_open?"true":"false",c.ap_password[0]?"true":"false",c.ap_channel,c.ap_max_clients,c.sta_enabled?"true":"false",s,c.sta_password[0]?"true":"false");return send_json(r,j);}
-static esp_err_t config_network_post(httpd_req_t*r){char b[1024];if(read_body(r,b,sizeof(b))!=ESP_OK)return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,"invalid body");prisma_settings_t old={0};settings_get(&old);char friendly[33],host[33],ssid[33],pass[64]={0},tmp[16];strlcpy(friendly,old.friendly_name,sizeof(friendly));strlcpy(host,old.hostname,sizeof(host));strlcpy(ssid,old.ap_ssid,sizeof(ssid));form_value(b,"friendly_name",friendly,sizeof(friendly));form_value(b,"hostname",host,sizeof(host));form_value(b,"ap_ssid",ssid,sizeof(ssid));bool open=old.ap_open;if(form_value(b,"ap_open",tmp,sizeof(tmp)))open=parse_bool(tmp,old.ap_open);uint8_t channel=old.ap_channel;if(form_value(b,"channel",tmp,sizeof(tmp)))channel=(uint8_t)atoi(tmp);uint8_t max=old.ap_max_clients;if(form_value(b,"max_clients",tmp,sizeof(tmp)))max=(uint8_t)atoi(tmp);bool hp=form_value(b,"ap_password",pass,sizeof(pass));const char*ep=(!open&&(!hp||!pass[0]))?old.ap_password:pass;esp_err_t e=settings_set_ap(ssid,open,ep,channel,max);if(e==ESP_OK)e=settings_set_identity(friendly,host);if(e!=ESP_OK)return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,"invalid network settings");platform_log_event("INFO","network","AP/identity settings saved; reboot required");return send_json(r,"{\"ok\":true,\"saved\":true,\"reboot_required\":true}");}
+static esp_err_t config_network_post(httpd_req_t *r)
+{
+    char body[1024];
+    if (read_body(r, body, sizeof(body)) != ESP_OK)
+        return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, "invalid body");
+
+    /* One validated NVS transaction: AP configuration and identity together. */
+    prisma_settings_t next = {0};
+    settings_get(&next);
+    char value[80] = {0};
+    if (form_value(body, "friendly_name", value, sizeof(value)))
+        strlcpy(next.friendly_name, value, sizeof(next.friendly_name));
+    if (form_value(body, "hostname", value, sizeof(value)))
+        strlcpy(next.hostname, value, sizeof(next.hostname));
+    if (form_value(body, "ap_ssid", value, sizeof(value)))
+        strlcpy(next.ap_ssid, value, sizeof(next.ap_ssid));
+    if (form_value(body, "ap_open", value, sizeof(value)))
+        next.ap_open = parse_bool(value, next.ap_open);
+    if (form_value(body, "channel", value, sizeof(value))) {
+        int n = atoi(value);
+        if (n < 1 || n > 13)
+            return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, "invalid Wi-Fi channel");
+        next.ap_channel = (uint8_t)n;
+    }
+    if (form_value(body, "max_clients", value, sizeof(value))) {
+        int n = atoi(value);
+        if (n < 1 || n > 4)
+            return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, "invalid max clients");
+        next.ap_max_clients = (uint8_t)n;
+    }
+    if (next.ap_open) {
+        next.ap_password[0] = 0;
+    } else if (form_value(body, "ap_password", value, sizeof(value)) && value[0]) {
+        strlcpy(next.ap_password, value, sizeof(next.ap_password));
+    }
+    esp_err_t e = settings_apply(&next);
+    if (e != ESP_OK)
+        return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, "invalid network settings");
+    platform_log_event("INFO", "network", "AP/identity settings saved atomically; reboot required");
+    return send_json(r, "{\"ok\":true,\"saved\":true,\"reboot_required\":true}");
+}
 static esp_err_t scan_post(httpd_req_t*r){wifi_ap_info_t aps[PRISMA_SCAN_MAX]={0};size_t count=0;esp_err_t e=network_scan(aps,PRISMA_SCAN_MAX,&count);if(e!=ESP_OK)return httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,esp_err_to_name(e));char j[3600];size_t o=(size_t)snprintf(j,sizeof(j),"{\"count\":%u,\"networks\":[",(unsigned)count);for(size_t i=0;i<count&&o<sizeof(j)-120;i++){char s[100];esc_json(aps[i].ssid,s,sizeof(s));o+=(size_t)snprintf(j+o,sizeof(j)-o,"%s{\"ssid\":\"%s\",\"rssi\":%d,\"channel\":%u,\"security\":\"%s\"}",i?",":"",s,aps[i].rssi,aps[i].channel,auth_name(aps[i].authmode));}snprintf(j+o,sizeof(j)-o,"]}");return send_json(r,j);}
 static esp_err_t sta_connect_post(httpd_req_t*r){char b[512],ssid[33]={0},pass[64]={0};if(read_body(r,b,sizeof(b))!=ESP_OK||!form_value(b,"ssid",ssid,sizeof(ssid)))return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,"ssid required");form_value(b,"password",pass,sizeof(pass));esp_err_t e=network_connect_sta(ssid,pass);if(e!=ESP_OK)return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,esp_err_to_name(e));platform_log_event("INFO","network","STA connection requested");return send_json(r,"{\"ok\":true,\"connecting\":true,\"fallback_ap\":true}");}
 static esp_err_t sta_forget_post(httpd_req_t*r){esp_err_t e=network_forget_sta();if(e!=ESP_OK)return httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,esp_err_to_name(e));platform_log_event("INFO","network","STA credentials forgotten");return send_json(r,"{\"ok\":true}");}
+static esp_err_t sta_retry_post(httpd_req_t *r)
+{
+    esp_err_t e = network_retry_sta();
+    if (e == ESP_ERR_INVALID_STATE)
+        return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, "STA not configured or network unavailable");
+    if (e != ESP_OK)
+        return httpd_resp_send_err(r, HTTPD_500_INTERNAL_SERVER_ERROR, esp_err_to_name(e));
+    return send_json(r, "{\"ok\":true,\"connecting\":true,\"fallback_ap\":true}");
+}
 static void reboot_task(void*a){vTaskDelay(pdMS_TO_TICKS(700));esp_restart();}
 static esp_err_t reboot_post(httpd_req_t*r){platform_log_event("WARN","system","Reboot requested from Admin");esp_err_t e=send_json(r,"{\"ok\":true,\"rebooting\":true}");xTaskCreate(reboot_task,"reboot",2048,NULL,3,NULL);return e;}
 static esp_err_t capabilities_get(httpd_req_t*r){storage_state_t st={0};imu_hw_state_t imu={0};storage_get_state(&st);imu_hw_get_state(&imu);char j[2100];snprintf(j,sizeof(j),"{\"schema\":\"prisma.capabilities.v1\",\"product\":\"%s\",\"capabilities\":[{\"id\":\"admin\",\"state\":\"ready\"},{\"id\":\"settings\",\"state\":\"persistent_nvs\"},{\"id\":\"files\",\"state\":\"%s\"},{\"id\":\"internal_storage\",\"state\":\"%s\"},{\"id\":\"sd_storage\",\"state\":\"%s\"},{\"id\":\"imu_hw\",\"state\":\"%s\"},{\"id\":\"health\",\"state\":\"ready\"},{\"id\":\"event_log\",\"state\":\"ready\"},{\"id\":\"config_backup\",\"state\":\"ready\"},{\"id\":\"snapshot\",\"state\":\"deferred\"},{\"id\":\"stream\",\"state\":\"deferred\"},{\"id\":\"esp_now\",\"state\":\"planned\"},{\"id\":\"ble\",\"state\":\"planned\"},{\"id\":\"admin_auth\",\"state\":\"%s\"},{\"id\":\"ota\",\"state\":\"local_upload_with_rollback\"}]}",PRISMA_PRODUCT,(st.internal.mounted||st.sd.mounted)?"ready":"no_volume",st.internal.mounted?"mounted":"unavailable",st.sd.mounted?"mounted":"unavailable",imu.ready?"ready":"error",auth_state());return send_json(r,j);}
 
 esp_err_t web_start(void){if(s_server)return ESP_OK;httpd_config_t c=HTTPD_DEFAULT_CONFIG();c.stack_size=12288;c.max_uri_handlers=56;c.max_open_sockets=7;c.recv_wait_timeout=20;c.send_wait_timeout=20;c.lru_purge_enable=true;esp_err_t e=httpd_start(&s_server,&c);if(e!=ESP_OK)return e;const httpd_uri_t routes[]={
- {.uri="/",.method=HTTP_GET,.handler=home_get},{.uri="/admin",.method=HTTP_GET,.handler=admin_get},{.uri="/admin.css",.method=HTTP_GET,.handler=admin_css_get},{.uri="/admin.js",.method=HTTP_GET,.handler=admin_js_get},{.uri="/camera-synth",.method=HTTP_GET,.handler=synth_get},{.uri="/camera-sync",.method=HTTP_GET,.handler=alias_get},{.uri="/shared.css",.method=HTTP_GET,.handler=css_get},{.uri="/api/v1/status",.method=HTTP_GET,.handler=status_get},{.uri="/api/v1/capabilities",.method=HTTP_GET,.handler=capabilities_get},{.uri="/api/v1/config",.method=HTTP_GET,.handler=config_get},{.uri="/api/v1/config/network",.method=HTTP_POST,.handler=config_network_post},{.uri="/api/v1/network/scan",.method=HTTP_POST,.handler=scan_post},{.uri="/api/v1/network/connect",.method=HTTP_POST,.handler=sta_connect_post},{.uri="/api/v1/network/forget",.method=HTTP_POST,.handler=sta_forget_post},{.uri="/api/v1/system/reboot",.method=HTTP_POST,.handler=reboot_post}};
+ {.uri="/",.method=HTTP_GET,.handler=home_get},{.uri="/admin",.method=HTTP_GET,.handler=admin_get},{.uri="/admin.css",.method=HTTP_GET,.handler=admin_css_get},{.uri="/admin.js",.method=HTTP_GET,.handler=admin_js_get},{.uri="/camera-synth",.method=HTTP_GET,.handler=synth_get},{.uri="/camera-sync",.method=HTTP_GET,.handler=alias_get},{.uri="/shared.css",.method=HTTP_GET,.handler=css_get},{.uri="/api/v1/status",.method=HTTP_GET,.handler=status_get},{.uri="/api/v1/capabilities",.method=HTTP_GET,.handler=capabilities_get},{.uri="/api/v1/config",.method=HTTP_GET,.handler=config_get},{.uri="/api/v1/config/network",.method=HTTP_POST,.handler=config_network_post},{.uri="/api/v1/network/scan",.method=HTTP_POST,.handler=scan_post},{.uri="/api/v1/network/connect",.method=HTTP_POST,.handler=sta_connect_post},{.uri="/api/v1/network/forget",.method=HTTP_POST,.handler=sta_forget_post},{.uri="/api/v1/network/retry",.method=HTTP_POST,.handler=sta_retry_post},{.uri="/api/v1/system/reboot",.method=HTTP_POST,.handler=reboot_post}};
  for(size_t i=0;i<sizeof(routes)/sizeof(routes[0]);i++){e=auth_register_uri_handler(s_server,&routes[i]);if(e!=ESP_OK)return e;}e=files_web_register(s_server);if(e!=ESP_OK)return e;e=platform_web_register(s_server);if(e!=ESP_OK)return e;e=auth_web_register(s_server);if(e!=ESP_OK)return e;e=diagnostics_web_register(s_server);if(e!=ESP_OK)return e;e=ota_web_register(s_server);if(e!=ESP_OK)return e;ESP_LOGI(TAG,"Admin platform ready: modular UI + files + health + logs + config backup");return ESP_OK;}

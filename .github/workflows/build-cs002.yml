@@ -1,7 +1,7 @@
-name: Build Camera Synth CS009
+name: Build Camera Synth CS010
 on:
   push:
-    branches: [main, cs009-ota-recovery]
+    branches: [main, cs010-network-resilience]
   workflow_dispatch:
 permissions:
   contents: read
@@ -11,7 +11,7 @@ jobs:
     container: espressif/idf:v5.3.2
     steps:
       - uses: actions/checkout@v4
-      - name: Compile CS009
+      - name: Compile CS010
         id: compile
         shell: bash
         run: |
@@ -21,22 +21,22 @@ jobs:
           status=${PIPESTATUS[0]}
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit 0
-      - name: Package CS009
+      - name: Package CS010
         if: steps.compile.outputs.status == '0'
         shell: bash
         run: |
           . /opt/esp/idf/export.sh
           cd build
-          python -m esptool --chip esp32s3 merge_bin -o PRISMA-PI-CAMERA-SYNTH-CS009-factory.bin @flash_args
-          sha256sum PRISMA-PI-CAMERA-SYNTH-CS009-factory.bin prisma_camera_synth.bin > SHA256SUMS.txt
-      - name: Upload CS009 artifacts and diagnostic log
+          python -m esptool --chip esp32s3 merge_bin -o PRISMA-PI-CAMERA-SYNTH-CS010-factory.bin @flash_args
+          sha256sum PRISMA-PI-CAMERA-SYNTH-CS010-factory.bin prisma_camera_synth.bin > SHA256SUMS.txt
+      - name: Upload CS010 artifacts and diagnostic log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: PRISMA-PI-CAMERA-SYNTH-CS009-${{ github.run_number }}
+          name: PRISMA-PI-CAMERA-SYNTH-CS010-${{ github.run_number }}
           path: |
             build.log
-            build/PRISMA-PI-CAMERA-SYNTH-CS009-factory.bin
+            build/PRISMA-PI-CAMERA-SYNTH-CS010-factory.bin
             build/prisma_camera_synth.bin
             build/SHA256SUMS.txt
             build/flasher_args.json

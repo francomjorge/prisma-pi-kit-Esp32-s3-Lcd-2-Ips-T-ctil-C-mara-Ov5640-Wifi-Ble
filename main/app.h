@@ -38,6 +38,12 @@ typedef struct {
     char sta_ssid[33];
     char sta_ip[16];
     int8_t sta_rssi;
+    uint32_t sta_connect_attempts;
+    uint32_t sta_disconnect_count;
+    uint32_t sta_retry_in_ms;
+    uint16_t sta_last_disconnect_reason;
+    bool sta_retry_scheduled;
+    uint64_t sta_last_connected_uptime_ms;
 } network_state_t;
 
 typedef struct {
@@ -150,6 +156,7 @@ void network_get_state(network_state_t *out);
 esp_err_t network_scan(wifi_ap_info_t *out, size_t max_results, size_t *count);
 esp_err_t network_connect_sta(const char *ssid, const char *password);
 esp_err_t network_forget_sta(void);
+esp_err_t network_retry_sta(void);
 
 esp_err_t discovery_start(void);
 void discovery_get_state(discovery_state_t *out);

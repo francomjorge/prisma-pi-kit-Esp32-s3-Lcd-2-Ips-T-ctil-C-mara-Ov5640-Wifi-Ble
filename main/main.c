@@ -4,7 +4,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 
-static const char *TAG = "CS009";
+static const char *TAG = "CS010";
 
 static bool init_nvs(void)
 {
