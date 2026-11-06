@@ -4,7 +4,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 
-static const char *TAG = "CS007";
+static const char *TAG = "CS009";
 
 static bool init_nvs(void)
 {
@@ -65,6 +65,7 @@ void app_main(void)
     log_result("network", err, "Network initialized");
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Network init failed: %s", esp_err_to_name(err));
+        ota_boot_check(false);
         return;
     }
 
@@ -75,8 +76,12 @@ void app_main(void)
     log_result("web", err, "HTTP administration started");
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "HTTP server failed: %s", esp_err_to_name(err));
+        ota_boot_check(false);
         return;
     }
+
+    /* Confirm a new OTA image only after core Admin services are reachable. */
+    ota_boot_check(display_ready());
 
     network_state_t net = {0};
     discovery_state_t discovery = {0};
