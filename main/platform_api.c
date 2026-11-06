@@ -115,7 +115,7 @@ static esp_err_t health_get(httpd_req_t *req)
         cam.ready ? "ready" : "error",
         touch.ready ? "ready" : "error",
         imu.ready ? "ready" : "error",
-        heap_free, heap_min, psram_free);
+        heap_free, heap_min, psram_free, auth_is_enabled() ? "true" : "false");
 
     if (n < 0 || n >= (int)sizeof(json)) {
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "health overflow");
