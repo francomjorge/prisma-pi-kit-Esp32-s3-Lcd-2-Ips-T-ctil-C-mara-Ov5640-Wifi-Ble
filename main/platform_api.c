@@ -277,7 +277,9 @@ static esp_err_t factory_reset_post(httpd_req_t *req)
 {
     esp_err_t e = settings_factory_reset();
     if (e != ESP_OK) return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, esp_err_to_name(e));
-    platform_log_event("WARN", "config", "Settings reset to factory defaults; files preserved");
+    e = auth_factory_reset();
+    if (e != ESP_OK) return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "admin credential reset failed");
+    platform_log_event("WARN", "config", "Settings and admin credentials reset; files preserved");
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req,
         "{\"ok\":true,\"scope\":\"settings_only\",\"files_preserved\":true,\"reboot_required\":true}");
@@ -294,7 +296,7 @@ esp_err_t platform_web_register(void *server_handle)
         {.uri="/api/v1/config/factory-reset", .method=HTTP_POST, .handler=factory_reset_post}
     };
     for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i) {
-        esp_err_t e = httpd_register_uri_handler(server, &routes[i]);
+        esp_err_t e = auth_register_uri_handler(server, &routes[i]);
         if (e != ESP_OK) return e;
     }
     return ESP_OK;

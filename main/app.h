@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "esp_err.h"
+#include "esp_http_server.h"
 
 #define PRISMA_SETTINGS_SCHEMA 1
 #define PRISMA_SCAN_MAX 16
@@ -166,6 +167,14 @@ esp_err_t platform_log_start(void);
 void platform_log_event(const char *level, const char *subsystem, const char *message);
 size_t platform_log_copy(platform_event_t *out, size_t max_events);
 uint32_t platform_log_total_events(void);
+
+esp_err_t auth_start(void);
+bool auth_is_enabled(void);
+const char *auth_state(void);
+esp_err_t auth_set_password(const char *current, const char *next_password);
+esp_err_t auth_factory_reset(void);
+esp_err_t auth_web_register(httpd_handle_t server);
+esp_err_t auth_register_uri_handler(httpd_handle_t server, const httpd_uri_t *uri);
 
 esp_err_t platform_web_register(void *server_handle);
 esp_err_t web_start(void);

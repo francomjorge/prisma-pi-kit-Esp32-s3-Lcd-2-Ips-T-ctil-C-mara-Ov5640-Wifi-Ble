@@ -691,7 +691,7 @@ esp_err_t files_web_register(httpd_handle_t server)
     };
 
     for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i) {
-        esp_err_t e = httpd_register_uri_handler(server, &routes[i]);
+        esp_err_t e = auth_register_uri_handler(server, &routes[i]);
         if (e != ESP_OK) return e;
     }
     ESP_LOGI(TAG, "Storage/files API ready: streamed dual-volume operations");

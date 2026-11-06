@@ -4,7 +4,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 
-static const char *TAG = "CS006";
+static const char *TAG = "CS007";
 
 static bool init_nvs(void)
 {
@@ -38,6 +38,9 @@ void app_main(void)
 
     esp_err_t err = settings_start();
     log_result("settings", err, "Settings loaded");
+
+    err = auth_start();
+    log_result("security", err, "Admin credentials loaded");
 
     /* SD shares SPI2 with LCD. Storage runs first so the card enters SPI mode before LCD traffic. */
     err = storage_start();
