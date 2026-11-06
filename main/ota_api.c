@@ -102,6 +102,15 @@ static void reboot_task(void *arg)
     vTaskDelay(pdMS_TO_TICKS(1200));
     esp_restart();
 }
+static void rollback_task(void *arg)
+{
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(1200));
+    esp_err_t e = esp_ota_mark_app_invalid_rollback_and_reboot();
+    ESP_LOGE(TAG, "Manual rollback failed: %s", esp_err_to_name(e));
+    platform_log_event("ERROR", "ota", "Manual rollback rejected by ESP-IDF");
+    vTaskDelete(NULL);
+}
 static bool schedule_restart(void)
 {
     return xTaskCreate(reboot_task, "ota_reboot", 2048, NULL, 4, NULL) == pdPASS;
@@ -205,7 +214,7 @@ static esp_err_t update_upload_post(httpd_req_t *req)
     esp_err_t error = ESP_OK;
     mbedtls_sha256_context sha;
     mbedtls_sha256_init(&sha);
-    if (mbedtls_sha256_starts_ret(&sha, 0) != 0) error = ESP_FAIL;
+    if (mbedtls_sha256_starts(&sha, 0) != 0) error = ESP_FAIL;
     size_t received = 0, staged = 0;
     unsigned timeout_count = 0;
     char version[33] = {0};
@@ -232,7 +241,7 @@ static esp_err_t update_upload_post(httpd_req_t *req)
             if (error != ESP_OK) break;
             begun = true;
         }
-        if (mbedtls_sha256_update_ret(&sha, chunk, staged) != 0) {
+        if (mbedtls_sha256_update(&sha, chunk, staged) != 0) {
             error = ESP_FAIL;
             break;
         }
@@ -241,7 +250,7 @@ static esp_err_t update_upload_post(httpd_req_t *req)
     }
     if (error == ESP_OK && received != req->content_len) error = ESP_ERR_INVALID_SIZE;
     if (error == ESP_OK && staged != 0) error = ESP_ERR_INVALID_SIZE;
-    if (error == ESP_OK && mbedtls_sha256_finish_ret(&sha, actual) != 0) error = ESP_FAIL;
+    if (error == ESP_OK && mbedtls_sha256_finish(&sha, actual) != 0) error = ESP_FAIL;
     mbedtls_sha256_free(&sha);
 
     if (error == ESP_OK && !fixed_equal(expected, actual, sizeof(expected)))
@@ -292,13 +301,10 @@ static esp_err_t update_rollback_post(httpd_req_t *req)
 #if CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE
     if (!esp_ota_check_rollback_is_possible())
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "no verified previous OTA image");
-    esp_err_t e = esp_ota_mark_app_invalid_rollback();
-    if (e != ESP_OK)
-        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "rollback denied by bootloader");
+    if (xTaskCreate(rollback_task, "ota_rollback", 3072, NULL, 4, NULL) != pdPASS)
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "rollback task unavailable");
     platform_log_event("WARN", "ota", "Manual rollback requested; rebooting into previous valid image");
-    esp_err_t sent = json(req, "{\"ok\":true,\"rebooting\":true,\"rollback\":true}");
-    (void)schedule_restart();
-    return sent;
+    return json(req, "{\"ok\":true,\"rebooting\":true,\"rollback\":true}");
 #else
     return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bootloader rollback not compiled");
 #endif
