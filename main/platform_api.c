@@ -102,7 +102,7 @@ static esp_err_t health_get(httpd_req_t *req)
         "\"memory\":{\"heap_free\":%" PRIu32 ",\"heap_min\":%" PRIu32 ","
         "\"psram_free\":%" PRIu32 "},"
         "\"policy\":{\"camera_capture\":false,\"stream\":false,"
-        "\"touch_navigation\":false,\"admin_auth\":false}}",
+        "\"touch_navigation\":false,\"admin_auth\":%s}}",
         core_ok && infra_ok ? "ready" : core_ok ? "degraded" : "error",
         (unsigned long long)(esp_timer_get_time() / 1000),
         event_count,
@@ -127,7 +127,8 @@ static esp_err_t health_get(httpd_req_t *req)
 
 static esp_err_t logs_get(httpd_req_t *req)
 {
-    platform_event_t events[PRISMA_EVENT_LOG_CAPACITY];
+    platform_event_t *events = calloc(PRISMA_EVENT_LOG_CAPACITY, sizeof(*events));
+    if (!events) return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "no memory");
     size_t count = platform_log_copy(events, PRISMA_EVENT_LOG_CAPACITY);
     uint32_t total = platform_log_total_events();
 
@@ -161,6 +162,7 @@ static esp_err_t logs_get(httpd_req_t *req)
 
     if (e == ESP_OK) e = httpd_resp_send_chunk(req, "]}", 2);
     if (e == ESP_OK) e = httpd_resp_send_chunk(req, NULL, 0);
+    free(events);
     return e;
 }
 

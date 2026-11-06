@@ -177,4 +177,5 @@ esp_err_t auth_web_register(httpd_handle_t server);
 esp_err_t auth_register_uri_handler(httpd_handle_t server, const httpd_uri_t *uri);
 
 esp_err_t platform_web_register(void *server_handle);
+esp_err_t diagnostics_web_register(httpd_handle_t server);
 esp_err_t web_start(void);
