@@ -15,6 +15,7 @@ jobs:
         run: |
           set -euo pipefail
           node --check main/web/admin.js
+          node tests/admin_smoke.cjs
           python3 - <<'PY'
           from pathlib import Path
           import re, subprocess, tempfile
