@@ -168,6 +168,8 @@ esp_err_t touch_hw_probe(void);
 void touch_hw_get_state(touch_hw_state_t *out);
 /* 0 none, 1 tap, 2 swipe left, 3 swipe right; debounced events only. */
 int touch_hw_poll_action(void);
+/* Last accepted touch coordinate on the 240x320 LCD (for glitch origin). */
+void touch_hw_last_point(uint16_t *x, uint16_t *y);
 
 esp_err_t imu_hw_probe(void);
 void imu_hw_get_state(imu_hw_state_t *out);
