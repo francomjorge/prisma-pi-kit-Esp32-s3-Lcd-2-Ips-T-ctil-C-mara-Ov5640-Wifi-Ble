@@ -43,6 +43,10 @@ assert 'RESET NETWORK' in admin and 'RESET ADMIN PASS' in admin
 assert 'BACK TO PRISMA' in function_body('settings_footer')
 assert 'CONFIRM REQUIRED' in function_body('render_confirm')
 assert "UNIQUE HOSTNAME" in s and "MDNS ADDRESS" in s and "DIRECT AP ADDRESS" in s
+assert "char host_lcd[40]" in s
+assert "if(host_lcd[i]>=\'a\'&&host_lcd[i]<=\'z\')" in s
+assert '"%s.LOCAL",host_lcd' in s
+assert 'text(6,134,mdns_lcd,1,wh)' in s
 assert "discovery_get_state(&discovery)" in s
 assert "net.sta_connected&&net.sta_ip[0]" in s
 swipe=Path("main/touch_hw.c").read_text(encoding="utf-8")
