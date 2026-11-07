@@ -188,9 +188,10 @@ static void render_gate(void)
 static void settings_footer(int page)
 {
     const uint16_t dim=rgb(75,82,90);
-    char p[16];
-    snprintf(p,sizeof(p),"%d OF %d",page+1,SETTINGS_COUNT);
-    centered_text(246,p,1,dim);
+    static const char * const numbers[SETTINGS_COUNT] = {
+        "1 OF 5", "2 OF 5", "3 OF 5", "4 OF 5", "5 OF 5"
+    };
+    centered_text(246,numbers[page>=0&&page<SETTINGS_COUNT?page:0],1,dim);
     centered_button(266,30,"BACK TO PRISMA");
     settings_dots(page);
 }
