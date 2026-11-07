@@ -18,6 +18,13 @@ static bool s_consumed;
 static uint16_t s_x0, s_y0, s_x_last, s_y_last;
 static uint8_t s_samples, s_release_samples;
 static uint64_t s_press_ms, s_event_ms;
+static uint16_t s_last_action_x, s_last_action_y;
+
+void touch_hw_last_point(uint16_t *x, uint16_t *y)
+{
+    if (x) *x = s_last_action_x;
+    if (y) *y = s_last_action_y;
+}
 
 void touch_hw_get_state(touch_hw_state_t *out)
 {
@@ -98,6 +105,8 @@ int touch_hw_poll_action(void)
             abs(dx) >= 55 && abs(dx) > abs(dy) &&
             (!s_event_ms || now - s_event_ms >= TOUCH_LOCKOUT_MS)) {
             s_consumed = true;
+            s_last_action_x = x;
+            s_last_action_y = y;
             s_event_ms = now;
             const int event = dx < 0 ? 2 : 3;
             ESP_LOGI(TAG, "swipe=%d dx=%d dy=%d", event, dx, dy);
@@ -118,6 +127,8 @@ int touch_hw_poll_action(void)
         abs(dx) > 18 || abs(dy) > 18 ||
         (s_event_ms && now - s_event_ms < TOUCH_LOCKOUT_MS))
         return 0;
+    s_last_action_x = s_x0;
+    s_last_action_y = s_y0;
     s_event_ms = now;
     ESP_LOGI(TAG, "tap x=%u y=%u", (unsigned)s_x0, (unsigned)s_y0);
     return 1;
