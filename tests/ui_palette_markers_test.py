@@ -23,23 +23,27 @@ def function_body(name):
     assert depth == 0, f"unclosed function {name}"
     return s[start:i-1]
 
-assert "UI_PAGE_COUNT = 2" in model, "expected two LCD pages"
-assert "UI_PAGE_ADMIN = 0" in model
-assert "UI_PAGE_HOME = 1" in model
-assert "UI_PAGE_NETWORK" not in model and "UI_PAGE_SYSTEM" not in model
+assert "UI_PAGE_COUNT = 2" in model
+assert "UI_PAGE_ADMIN = 0" in model and "UI_PAGE_HOME = 1" in model
 assert '#define LCD_H 320' in s and '#define LCD_W 240' in s
-assert '#define MARKER_Y (LCD_H - 16)' in s
-
-dots = function_body("page_marks")
-assert "i < UI_PAGE_COUNT" in dots
-assert "108 + (int)i * 16" in dots
-assert "MARKER_Y, 8, 8" in dots
-assert "i == active ? cyan : dim" in dots
-assert "rgb(35,220,220)" in dots
-assert "rgb(45,60,75)" in dots
-assert [(108+i*16,304,8,8) for i in range(2)] == [
-    (108,304,8,8), (124,304,8,8)
-]
+# Hidden gate has no main-carousel dots.
+assert "page_marks(" not in s
+assert "settings_dots(" in s
+assert '#define SETTINGS_COUNT 5' in s
+assert 'settings_dots(page)' in s
+gate = function_body("render_gate")
+assert 'centered_button(132,48,"CONFIG")' in gate
+assert 'centered_button(210,48,"BACK TO PRISMA")' in gate
+assert "settings_dots(" not in gate
+admin = function_body("render_settings")
+for label in ("DEVICE","NETWORK","STORAGE","SECURITY","SYSTEM"):
+    assert f'"{label}"' in admin
+assert 'settings_footer(page)' in admin
+assert 'RESET NETWORK' in admin and 'RESET ADMIN PASS' in admin
+assert 'BACK TO PRISMA' in function_body('settings_footer')
+assert 'CONFIRM REQUIRED' in function_body('render_confirm')
+assert 'network_forget_sta()' in s
+assert 'auth_factory_reset()' in s
 
 palette = function_body("moving_color")
 for color in ("{30,120,255}", "{175,55,255}", "{255,35,150}",
@@ -48,13 +52,8 @@ for color in ("{30,120,255}", "{175,55,255}", "{255,35,150}",
 assert "% 5U" in palette
 assert "rgb(4,7,12)" in function_body("render_home")
 assert "rgb(240,245,250)" in function_body("render_home")
-assert "page_marks(UI_PAGE_HOME)" in function_body("render_home")
 assert "vivid_blue" not in s and "rgb(0,119,228)" not in s
-assert "page_marks(UI_PAGE_ADMIN)" in function_body("render_admin")
-assert "render_network(" not in s and "render_system(" not in s
-admin = function_body("render_admin")
-assert "rect(0,0,LCD_W,LCD_H,rgb(4,7,12))" in admin
-assert "rgb(35,220,220)" in admin
-assert "NETWORK / SYSTEM" in admin and "FILES / SECURITY" in admin
-print("PASS: CONFIG(left) HOME(right), two markers, black theme, exact legacy palette")
-print(old_ref)
+assert "rgb(4,7,12)" in function_body("render_gate")
+assert "rgb(4,7,12)" in function_body("render_settings")
+assert "rgb(4,7,12)" in function_body("render_confirm")
+print("PASS: hidden gate, two buttons, five settings pages, confirmed local reset actions, black PRISMA palette")
