@@ -15,6 +15,7 @@
 #include "app.h"
 #include "ui_model.h"
 #include "esp_timer.h"
+#include "esp_system.h"
 
 #define LCD_W 240
 #define LCD_H 320
@@ -112,16 +113,6 @@ static uint16_t moving_color(unsigned tick, unsigned offset)
     };
     unsigned i = ((tick / 6U) + offset) % 5U;
     return rgb(palette[i][0], palette[i][1], palette[i][2]);
-}
-
-static void page_marks(unsigned active)
-{
-    /* Exactly two centered markers: CONFIG (left) | HOME (right). */
-    const uint16_t cyan = rgb(35,220,220);
-    const uint16_t dim = rgb(45,60,75);
-    for (unsigned i = 0; i < UI_PAGE_COUNT; i++)
-        rect(108 + (int)i * 16, MARKER_Y, 8, 8,
-             i == active ? cyan : dim);
 }
 
 /*
@@ -420,6 +411,6 @@ esp_err_t display_start(void)
         s_ready = false;
         return ESP_ERR_NO_MEM;
     }
-    ESP_LOGI(TAG, "PRISMA-PI two-page: CONFIG left HOME right; accumulated glitch preserved");
+    ESP_LOGI(TAG, "PRISMA SYSTEM hidden lateral gate + five settings screens; accumulated glitch preserved");
     return ESP_OK;
 }
