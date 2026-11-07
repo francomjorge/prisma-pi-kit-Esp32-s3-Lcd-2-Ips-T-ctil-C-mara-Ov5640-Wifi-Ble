@@ -2,21 +2,15 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/* Exact visible behavior copied from the validated PRISMA-PI LITE UI:
- * - -PI cycles until first tap
- * - first tap freezes the palette
- * - subsequent taps add pixel-glitch blocks without clearing the framebuffer
- * - swiping away and returning resets glitch and restarts cycling
- * - swipe LEFT from HOME opens ADMIN
- * - a home cooldown prevents a swipe release being interpreted as a tap.
- * Hardware polling/coordinates remain separate: this is pure portable C.
+/* Two physical LCD pages only: CONFIG/ADMIN at left (0), HOME at right (1).
+ * Network, System, Files, Security, etc. remain inside the web Admin.
+ * Swipe RIGHT from Home opens CONFIG. Swipe LEFT from CONFIG returns Home.
+ * Touch on HOME freezes palette and accumulates original pixel glitch.
  */
 enum {
-    UI_PAGE_HOME = 0,
-    UI_PAGE_ADMIN = 1,
-    UI_PAGE_NETWORK = 2,
-    UI_PAGE_SYSTEM = 3,
-    UI_PAGE_COUNT = 4,
+    UI_PAGE_ADMIN = 0,
+    UI_PAGE_HOME = 1,
+    UI_PAGE_COUNT = 2,
     UI_EVENT_TAP = 1,
     UI_EVENT_SWIPE_LEFT = 2,
     UI_EVENT_SWIPE_RIGHT = 3
@@ -78,19 +72,18 @@ static inline bool ui_model_animation_step(ui_model_t *ui, uint32_t now_ms)
 static inline ui_change_t ui_model_input(ui_model_t *ui, int action, uint32_t now_ms)
 {
     if (!ui) return UI_CHANGE_NONE;
-    if (action == UI_EVENT_SWIPE_LEFT || action == UI_EVENT_SWIPE_RIGHT) {
-        if (action == UI_EVENT_SWIPE_LEFT) {
-            if (ui->page < UI_PAGE_COUNT - 1) ui->page++;
-            else return UI_CHANGE_NONE;
-        } else {
-            if (ui->page > UI_PAGE_HOME) ui->page--;
-            else return UI_CHANGE_NONE;
-        }
+    /* Physical ordering is CONFIG(0) | HOME(1). No other LCD pages. */
+    if (action == UI_EVENT_SWIPE_RIGHT && ui->page == UI_PAGE_HOME) {
+        ui->page = UI_PAGE_ADMIN;
         ui->glitch_count = 0;
         ui->last_animation_ms = now_ms;
-        /* Matches prior HOME_COOLDOWN_TICKS = 25, 20ms loop. */
-        if (ui->page == UI_PAGE_HOME)
-            ui->home_cooldown_until_ms = now_ms + 500U;
+        return UI_CHANGE_PAGE;
+    }
+    if (action == UI_EVENT_SWIPE_LEFT && ui->page == UI_PAGE_ADMIN) {
+        ui->page = UI_PAGE_HOME;
+        ui->glitch_count = 0;
+        ui->last_animation_ms = now_ms;
+        ui->home_cooldown_until_ms = now_ms + 500U;
         return UI_CHANGE_PAGE;
     }
     if (action == UI_EVENT_TAP && ui->page == UI_PAGE_HOME &&
