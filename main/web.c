@@ -53,7 +53,13 @@ static esp_err_t status_get(httpd_req_t*r){
  esp_chip_info_t chip={0};esp_chip_info(&chip);uint32_t flash=0;bool flash_ok=esp_flash_get_size(NULL,&flash)==ESP_OK;size_t ps_total=heap_caps_get_total_size(MALLOC_CAP_SPIRAM),ps_free=heap_caps_get_free_size(MALLOC_CAP_SPIRAM);uint32_t heap=(uint32_t)esp_get_free_heap_size(),heap_min=(uint32_t)esp_get_minimum_free_heap_size();
  char sta_mac[18],ap_mac[18],fn[80],host[80],ap[80],sta[80],ie[120],se[120],imu_e[100];mac_text(ESP_MAC_WIFI_STA,sta_mac);mac_text(ESP_MAC_WIFI_SOFTAP,ap_mac);esc_json(cfg.friendly_name,fn,sizeof(fn));esc_json(cfg.hostname,host,sizeof(host));esc_json(net.ssid,ap,sizeof(ap));esc_json(net.sta_ssid,sta,sizeof(sta));esc_json(st.internal.error,ie,sizeof(ie));esc_json(st.sd.error,se,sizeof(se));esc_json(imu.error,imu_e,sizeof(imu_e));
  const esp_partition_t*ota0=esp_partition_find_first(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_APP_OTA_0,NULL);const esp_partition_t*ota1=esp_partition_find_first(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_APP_OTA_1,NULL);bool healthy=display_ready()&&net.ready&&cam.ready;
- char json[8500];int n=snprintf(json,sizeof(json),
+ /* Large JSON lives off the HTTP task stack; /api/v1/status is requested
+  * as soon as the browser opens the appliance. */
+ enum { STATUS_JSON_CAP = 8500 };
+ char *json = heap_caps_malloc(STATUS_JSON_CAP, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+ if (!json) json = malloc(STATUS_JSON_CAP);
+ if (!json) return httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,"status memory unavailable");
+ int n=snprintf(json,STATUS_JSON_CAP,
  "{\"schema\":\"prisma.status.v1\",\"product\":\"%s\",\"application\":\"%s\",\"vendor\":\"%s\",\"firmware\":\"%s\",\"build\":\"%s\",\"friendly_name\":\"%s\",\"hostname\":\"%s\",\"mdns_url\":\"%s\",\"settings_schema\":%u,\"uptime_s\":%llu,\"reset_reason\":\"%s\",\"health\":\"%s\","
  "\"device\":{\"model\":\"ESP32-S3\",\"cores\":%d,\"revision\":%d,\"flash_bytes\":%u,\"flash_read_ok\":%s,\"wifi_sta_mac\":\"%s\",\"wifi_ap_mac\":\"%s\"},"
  "\"memory\":{\"heap_free\":%u,\"heap_min\":%u,\"psram_total\":%u,\"psram_free\":%u},"
@@ -80,10 +86,15 @@ static esp_err_t status_get(httpd_req_t*r){
  touch.ready?"ready":"error",touch.controller,touch.address,touch.chip_id,touch.error,
  imu.ready?"ready":"error",imu.controller,imu.address,imu.address,imu.who_am_i,imu.who_am_i,imu.revision,imu.revision,imu_e,
  cam.ready?"ready":"error",cam.sensor_name,cam.expected?"true":"false",cam.pid,(unsigned)cam.xclk_hz,(unsigned)cam.fb_count,cam.fb_location,cam.error);
- if(n<0||n>=(int)sizeof(json)){
+ if(n<0||n>=STATUS_JSON_CAP){
+  free(json);
   return httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,"status overflow");
  }
- return httpd_resp_send(r,json,n);
+ httpd_resp_set_type(r,"application/json");
+ httpd_resp_set_hdr(r,"Cache-Control","no-store");
+ esp_err_t result = httpd_resp_send(r,json,n);
+ free(json);
+ return result;
 }
 
 static esp_err_t config_get(httpd_req_t*r){prisma_settings_t c={0};settings_get(&c);char f[80],h[80],a[80],s[80];esc_json(c.friendly_name,f,sizeof(f));esc_json(c.hostname,h,sizeof(h));esc_json(c.ap_ssid,a,sizeof(a));esc_json(c.sta_ssid,s,sizeof(s));char j[1100];snprintf(j,sizeof(j),"{\"schema\":%u,\"friendly_name\":\"%s\",\"hostname\":\"%s\",\"ap\":{\"ssid\":\"%s\",\"open\":%s,\"password_configured\":%s,\"channel\":%u,\"max_clients\":%u},\"sta\":{\"enabled\":%s,\"ssid\":\"%s\",\"password_configured\":%s}}",(unsigned)c.schema,f,h,a,c.ap_open?"true":"false",c.ap_password[0]?"true":"false",c.ap_channel,c.ap_max_clients,c.sta_enabled?"true":"false",s,c.sta_password[0]?"true":"false");return send_json(r,j);}
