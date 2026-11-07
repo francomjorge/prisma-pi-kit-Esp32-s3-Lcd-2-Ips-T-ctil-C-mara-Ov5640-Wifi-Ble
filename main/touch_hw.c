@@ -10,6 +10,7 @@
 #define TOUCH_CHIP_ID_REG 0xA7
 #define GESTURE_REG 0x01
 #define TOUCH_LOCKOUT_MS 320U
+#define TOUCH_SWIPE_MIN_PX 34
 
 static const char *TAG = "CS010R_TOUCH";
 static touch_hw_state_t s_state;
@@ -69,7 +70,7 @@ fail:
 
 /*
  * Build 58 touch behavior adapted to CST816D:
- *  - detect horizontal swipe during a finger-down gesture (>55px);
+ *  - detect horizontal swipe during finger drag at 34px (previously 55px);
  *  - confirm tap only after stable release and small displacement;
  *  - consume at most one action per contact;
  *  - debounce to suppress repeat/ghost navigation.
@@ -102,14 +103,14 @@ int touch_hw_poll_action(void)
         const int dx = (int)x - (int)s_x0;
         const int dy = (int)y - (int)s_y0;
         if (!s_consumed && s_samples >= 2 && (now - s_press_ms) < 1400U &&
-            abs(dx) >= 55 && abs(dx) > abs(dy) &&
+            abs(dx) >= TOUCH_SWIPE_MIN_PX && abs(dx) >= 2 * abs(dy) &&
             (!s_event_ms || now - s_event_ms >= TOUCH_LOCKOUT_MS)) {
             s_consumed = true;
             s_last_action_x = x;
             s_last_action_y = y;
             s_event_ms = now;
             const int event = dx < 0 ? 2 : 3;
-            ESP_LOGI(TAG, "swipe=%d dx=%d dy=%d", event, dx, dy);
+            ESP_LOGI(TAG, "swipe=%d dx=%d dy=%d threshold=%d", event, dx, dy, TOUCH_SWIPE_MIN_PX);
             return event;
         }
         return 0;
