@@ -46,6 +46,25 @@ static inline void ui_model_init(ui_model_t *ui, uint32_t now_ms)
     ui->home_cooldown_until_ms = 0;
 }
 
+typedef struct {
+    int x, y, size;
+    uint8_t palette_index;
+} ui_glitch_rect_t;
+
+/* Pixel layout is intentionally the SAME formula as legacy main.c glitch().
+ * Caller draws these on the already painted framebuffer (never re-clears). */
+static inline ui_glitch_rect_t ui_model_glitch_rect(uint32_t glitch_index,
+                                                    unsigned rect_index,
+                                                    int touch_x, int touch_y)
+{
+    ui_glitch_rect_t out;
+    out.x = touch_x + (int)((rect_index * 17U + glitch_index * 11U) % 55U) - 27;
+    out.y = touch_y + (int)((rect_index * 23U + glitch_index * 7U) % 55U) - 27;
+    out.size = 4 + (int)((rect_index + glitch_index) % 4U) * 3;
+    out.palette_index = (uint8_t)((rect_index + glitch_index) % 5U);
+    return out;
+}
+
 static inline bool ui_model_animation_step(ui_model_t *ui, uint32_t now_ms)
 {
     if (!ui || ui->page != UI_PAGE_HOME || ui->glitch_count) return false;
