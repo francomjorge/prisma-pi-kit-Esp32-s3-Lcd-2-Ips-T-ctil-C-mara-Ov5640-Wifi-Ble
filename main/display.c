@@ -22,7 +22,7 @@
 #define MARKER_Y (LCD_H - 16)
 #define TOUCH_POLL_MS 25
 
-static const char *TAG = "CS010U_LCD";
+static const char *TAG = "CS010V_LCD";
 static uint16_t *frame;
 static uint16_t *stripe[2];
 static esp_lcd_panel_handle_t panel;
@@ -98,10 +98,8 @@ static esp_err_t present_once(void)
     return present_region(0, LCD_H);
 }
 
-/* PRISMA-PI LITE source of truth: original black #04070C background,
- * white logo, cyan active dot, dark inactive dots and five -PI/glitch colors.
- * The 240x240 visual composition is vertically centred on the 240x320 LCD.
- * Navigation markers use all four real pages, at the LCD bottom.
+/* Original PRISMA-PI black palette, two LCD pages only:
+ * CONFIG(0) at left and HOME(1) at right. Web Admin retains all modules.
  */
 #define REFERENCE_SCENE_Y 40
 #define REFERENCE_SCENE_H 240
@@ -118,12 +116,11 @@ static uint16_t moving_color(unsigned tick, unsigned offset)
 
 static void page_marks(unsigned active)
 {
-    /* Exact prior layout (x=92,108,124,140; 8x8); aligned 16 px
-     * from the 320px panel bottom rather than the old 240px panel. */
+    /* Exactly two centered markers: CONFIG (left) | HOME (right). */
     const uint16_t cyan = rgb(35,220,220);
     const uint16_t dim = rgb(45,60,75);
     for (unsigned i = 0; i < UI_PAGE_COUNT; i++)
-        rect(92 + (int)i * 16, MARKER_Y, 8, 8,
+        rect(108 + (int)i * 16, MARKER_Y, 8, 8,
              i == active ? cyan : dim);
 }
 
@@ -165,58 +162,19 @@ static void render_admin(unsigned tick)
     (void)tick;
     network_state_t net = {0};
     network_get_state(&net);
-    uint16_t ink=rgb(240,245,250), muted=rgb(75,82,90), accent=rgb(35,220,220);
-    rect(0,0,LCD_W,LCD_H,rgb(4,7,12));
-    
-    centered_text(33,"ADMIN",4,ink);
-    centered_text(85,"WEB CONTROL",2,accent);
-    centered_text(125,"CONNECT TO AP",2,ink);
-    centered_text(158,net.ip[0]?net.ip:"192.168.4.1",2,ink);
-    centered_text(204,"OPEN WEB ADMIN",2,ink);
-    centered_text(245,"SWIPE TO NETWORK",1,muted);
-    page_marks(1);
-}
+    const uint16_t white = rgb(240,245,250);
+    const uint16_t cyan = rgb(35,220,220);
+    const uint16_t muted = rgb(75,82,90);
 
-static void render_network(unsigned tick)
-{
-    (void)tick;
-    network_state_t net = {0};
-    discovery_state_t mdns = {0};
-    network_get_state(&net);
-    discovery_get_state(&mdns);
-    uint16_t ink=rgb(240,245,250), muted=rgb(75,82,90), accent=rgb(35,220,220);
     rect(0,0,LCD_W,LCD_H,rgb(4,7,12));
-    
-    centered_text(30,"NETWORK",3,ink);
-    centered_text(78,"AP ADDRESS",2,accent);
-    centered_text(110,net.ip[0]?net.ip:"UNAVAILABLE",2,ink);
-    centered_text(157,"STA ADDRESS",2,accent);
-    centered_text(188,net.sta_connected?net.sta_ip:"DISCONNECTED",1,ink);
-    centered_text(230,mdns.ready?"MDNS READY":"MDNS OFF",2,ink);
-    centered_text(276,"SWIPE FOR SYSTEM",1,muted);
-    page_marks(2);
-}
-
-static void render_system(unsigned tick)
-{
-    (void)tick;
-    storage_state_t st = {0};
-    camera_hw_state_t cam = {0};
-    touch_hw_state_t touch = {0};
-    storage_get_state(&st);
-    camera_hw_get_state(&cam);
-    touch_hw_get_state(&touch);
-    uint16_t ink=rgb(240,245,250), muted=rgb(75,82,90), accent=rgb(35,220,220);
-    rect(0,0,LCD_W,LCD_H,rgb(4,7,12));
-    
-    centered_text(30,"SYSTEM",3,ink);
-    centered_text(78,"CS010U PLATFORM",2,accent);
-    centered_text(120,touch.ready?"TOUCH READY":"TOUCH ERROR",2,ink);
-    centered_text(155,cam.ready?"CAMERA PROBED":"CAMERA ERROR",2,ink);
-    centered_text(190,st.internal.mounted?"STORAGE READY":"STORAGE OFF",2,ink);
-    centered_text(232,"ADMIN VIA WEB",2,ink);
-    centered_text(276,"SWIPE RIGHT: BACK",1,muted);
-    page_marks(3);
+    centered_text(55,"CONFIG",4,white);
+    centered_text(100,"ADMINISTRATION",2,cyan);
+    centered_text(146,"OPEN IN BROWSER",2,white);
+    centered_text(177,net.ip[0] ? net.ip : "192.168.4.1",2,cyan);
+    centered_text(224,"NETWORK / SYSTEM",1,muted);
+    centered_text(243,"FILES / SECURITY",1,muted);
+    centered_text(270,"SWIPE LEFT: HOME",1,white);
+    page_marks(UI_PAGE_ADMIN);
 }
 
 static void display_task(void *unused)
@@ -237,10 +195,8 @@ static void display_task(void *unused)
              * Returning HOME restarts the logo animation. */
             initial = false;
             switch (ui.page) {
-                case UI_PAGE_ADMIN:    render_admin(now_ms / 20U); break;
-                case UI_PAGE_NETWORK:  render_network(now_ms / 20U); break;
-                case UI_PAGE_SYSTEM:   render_system(now_ms / 20U); break;
-                default:               render_home(ui.phase); break;
+                case UI_PAGE_ADMIN: render_admin(now_ms / 20U); break;
+                default: render_home(ui.phase); break;
             }
             err = present_once();
             last_status_redraw = now_ms;
@@ -261,9 +217,7 @@ static void display_task(void *unused)
         } else if (ui.page != UI_PAGE_HOME &&
                    (uint32_t)(now_ms - last_status_redraw) >= 3000U) {
             /* Update network/system status, not the frozen HOME framebuffer. */
-            if (ui.page == UI_PAGE_ADMIN) render_admin(now_ms / 20U);
-            else if (ui.page == UI_PAGE_NETWORK) render_network(now_ms / 20U);
-            else render_system(now_ms / 20U);
+            render_admin(now_ms / 20U);
             err = present_once();
             last_status_redraw = now_ms;
         }
@@ -325,6 +279,6 @@ esp_err_t display_start(void)
         s_ready = false;
         return ESP_ERR_NO_MEM;
     }
-    ESP_LOGI(TAG, "Legacy PRISMA-PI: palette pause + accumulated glitch, swipe-left ADMIN");
+    ESP_LOGI(TAG, "PRISMA-PI two-page: CONFIG left HOME right; accumulated glitch preserved");
     return ESP_OK;
 }
