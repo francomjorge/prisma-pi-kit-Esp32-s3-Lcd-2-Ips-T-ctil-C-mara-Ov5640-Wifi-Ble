@@ -1,1 +1,89 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PRISMA-PI CAMERA SYNTH</title><link rel="stylesheet" href="/shared.css"></head><body><header class="site-header"><div><a class="brand" href="/">PRISMA<span class="dashp">-PI</span></a><span class="product-tag">CAMERA SYNTH</span></div><nav class="topnav"><a class="active" href="/">PRODUCT</a><a href="/camera-synth">CAMERA SYNTH</a><a href="/admin">ADMIN</a></nav></header><main class="shell poster-wrap"><section class="poster" aria-label="PRISMA-PI Camera Synth"><div class="hero-logo">PRISMA<span>-PI</span></div><div class="hero-subtitle">CAMERA SYNTH</div><div class="device-stage"><div class="floor"></div><div class="device" aria-hidden="true"><div class="screen"><div class="screen-top"><div>CAMERA<br><span class="screen-live"><i class="live-dot"></i>LIVE</span></div><div>1080P<br>30 FPS</div></div><div class="city"></div><div class="screen-controls"><span class="mini-icon"></span><span class="shot"></span><span class="sliders">☷</span></div></div></div></div><p class="poster-copy">Camera, live preview, streaming and visual processing in a synthesizer-inspired camera appliance.<br>Capture, transform and create with motion, sound and light.</p><div class="poster-actions"><a class="cta primary" href="/camera-synth"><span>▣</span><span>CAMERA SYNTH</span><span>›</span></a><a class="cta secondary" href="/admin"><span>⚙</span><span>ADMIN</span><span>›</span></a></div><div class="poster-footer">VUDUM DEVELOPMENTS &nbsp;•&nbsp; PRISMA-PI CAMERA SYNTH</div></section></main><footer class="footer"><div class="shell"><span>CS002 · LOCAL-FIRST APPLIANCE</span><span><a href="http://prisma-pi-camera-synth.local/">prisma-pi-camera-synth.local</a> · <a href="https://vudum.com.ar/" target="_blank" rel="noopener">vudum.com.ar</a></span></div></footer></body></html>
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PRISMA-PI CAMERA SYNTH · Appliance</title>
+  <link rel="stylesheet" href="/shared.css">
+  <style>
+    .dashboard{max-width:1020px;margin:38px auto 70px}
+    .masthead{border:1px solid rgba(53,152,218,.5);border-radius:18px;padding:34px 26px;background:linear-gradient(155deg,#091932,#050c1c);box-shadow:0 0 24px rgba(0,208,255,.1)}
+    .identity{font:900 clamp(42px,8vw,78px)/1 Impact,"Arial Black",sans-serif;color:#f3faff;letter-spacing:.015em}
+    .identity .pi{display:inline-block;background:linear-gradient(110deg,#08e7ff,#537eff,#be4cff,#ff39a9,#08e7ff);background-size:270% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:prisma-shift 2.7s linear infinite;filter:drop-shadow(0 0 6px rgba(0,216,255,.35))}
+    .identity.glitch .pi{transform:translateX(4px);text-shadow:2px 0 rgba(255,21,150,.35)}
+    @keyframes prisma-shift{to{background-position:270% 0}}
+    .actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:27px}
+    .actions a{border:1px solid #228edb;border-radius:10px;padding:15px 22px;text-decoration:none;font-weight:900;font-size:14px}
+    .actions .primary{background:#073d54;border-color:#00dfff;color:#77f5ff}
+    .statusgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:20px}
+    .stat{background:#09182c;border:1px solid #184777;border-radius:10px;padding:18px;min-height:90px}
+    .stat span{display:block;color:#73b3d2;font-size:11px;font-weight:700;margin-bottom:9px}
+    .stat strong{font-size:16px;overflow-wrap:anywhere}
+    .hint{color:#99bdd0;line-height:1.6}
+    .offline{color:#ffad98!important}
+  </style>
+</head>
+<body>
+<header class="site-header"><div><a class="brand" href="/">PRISMA<span class="dashp">-PI</span></a><span class="product-tag">CAMERA SYNTH</span></div>
+<nav class="topnav"><a class="active" href="/">HOME</a><a href="/admin">ADMIN</a><a href="/camera-synth">CAMERA SYNTH</a></nav></header>
+<main class="shell dashboard">
+  <section class="masthead">
+    <div class="eyebrow">ESP32-S3 · LOCAL APPLIANCE</div>
+    <div class="identity" id="identity" title="Activar glitch">PRISMA<span class="pi">-PI</span></div>
+    <h1>CAMERA SYNTH</h1>
+    <p class="hint">Control local del dispositivo. La administración, la red, los archivos, la seguridad, los diagnósticos y las actualizaciones están en ADMIN. La captura y el streaming continúan deshabilitados hasta CS011.</p>
+    <div class="actions">
+      <a class="primary" href="/admin">OPEN ADMIN →</a>
+      <a href="/admin#NETWORK">NETWORK</a>
+      <a href="/admin#FILES">FILES</a>
+      <a href="/admin#DIAGNOSTICS">DIAGNOSTICS</a>
+    </div>
+  </section>
+  <section aria-live="polite">
+    <h2>ESTADO REAL DEL DISPOSITIVO</h2>
+    <p class="hint" id="liveNotice">Leyendo el estado directamente del ESP32…</p>
+    <div class="statusgrid" id="stats"></div>
+    <p class="hint">Los valores provienen de <a href="/api/v1/status">/api/v1/status</a>; no son datos de demostración.</p>
+  </section>
+</main>
+<footer class="footer"><div class="shell"><span>VUDUM DEVELOPMENTS · CS010R</span><a href="/admin">DEVICE ADMINISTRATION</a></div></footer>
+<script>
+const statusItems=[
+  ['Firmware',s=>s.firmware],
+  ['Health',s=>s.health],
+  ['LCD',s=>s.display?.state],
+  ['Touch',s=>s.touch?.state],
+  ['Camera hardware',s=>s.camera?.state],
+  ['Wi-Fi AP',s=>s.softap?.ssid],
+  ['AP IP',s=>s.softap?.ip],
+  ['Station',s=>s.sta?.connected?s.sta?.ip:'DISCONNECTED'],
+  ['mDNS',s=>s.mdns_url],
+  ['Internal storage',s=>s.storage?.internal?.mounted?'MOUNTED':'UNAVAILABLE'],
+  ['microSD',s=>s.storage?.sd?.mounted?'MOUNTED':'UNAVAILABLE'],
+  ['Uptime',s=>s.uptime_s+' s']
+];
+async function readStatus(){
+  const info=document.getElementById('liveNotice');
+  try{
+    const response=await fetch('/api/v1/status',{cache:'no-store'});
+    if(!response.ok)throw Error('HTTP '+response.status);
+    const s=await response.json();
+    document.getElementById('stats').replaceChildren(...statusItems.map(([key,get])=>{
+      const el=document.createElement('div');el.className='stat';
+      const label=document.createElement('span');label.textContent=key;
+      const value=document.createElement('strong');value.textContent=String(get(s)??'UNAVAILABLE');
+      el.append(label,value);return el;
+    }));
+    info.textContent='Datos actualizados desde el hardware · '+new Date().toLocaleTimeString('es-AR');
+    info.classList.remove('offline');
+  }catch(error){
+    info.textContent='No se pudo consultar al ESP32: '+error.message;
+    info.classList.add('offline');
+  }
+}
+const logo=document.getElementById('identity');
+logo.addEventListener('click',()=>{logo.classList.remove('glitch');void logo.offsetWidth;logo.classList.add('glitch');setTimeout(()=>logo.classList.remove('glitch'),350)});
+readStatus();setInterval(()=>{if(!document.hidden)readStatus()},5000);
+</script>
+</body>
+</html>
