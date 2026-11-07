@@ -215,7 +215,8 @@ static void render_settings(int page)
         if(mdns.ready){
             /* Full mDNS URL is up to 96 chars; render the host portion
              * without the scheme/trailing slash, max 40 visible chars. */
-            snprintf(b,sizeof(b),"%.39s",mdns.url[0]?mdns.url+7:"UNAVAILABLE");
+            const char *host_addr=strncmp(mdns.url,"http://",7)==0 ? mdns.url+7 : mdns.url;
+            snprintf(b,sizeof(b),"%.39s",host_addr[0]?host_addr:"UNAVAILABLE");
             size_t n=strlen(b);if(n&&b[n-1]=='/')b[n-1]=0;
             centered_text(119,b,1,cy);
         }else{
