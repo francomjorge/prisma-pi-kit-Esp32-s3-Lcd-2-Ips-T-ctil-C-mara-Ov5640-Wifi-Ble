@@ -19,7 +19,7 @@
 #define LCD_W 240
 #define LCD_H 320
 #define DMA_ROWS 20
-#define PAGE_COUNT 4
+#define MARKER_Y (LCD_H - 16)
 #define TOUCH_POLL_MS 25
 
 static const char *TAG = "CS010T_LCD";
@@ -98,10 +98,10 @@ static esp_err_t present_once(void)
     return present_region(0, LCD_H);
 }
 
-/* Reference appearance: PRISMA-PI SIMPLE SYNTH (Build 58).
- * Camera appliance retains the exact visual grammar, not the old PCB pins:
- * 240x240 saturated blue stage, black letterbox on the taller 240x320 LCD,
- * white PRISMA, animated multicolour -PI, tap-triggered square glitch.
+/* PRISMA-PI LITE source of truth: original black #04070C background,
+ * white logo, cyan active dot, dark inactive dots and five -PI/glitch colors.
+ * The 240x240 visual composition is vertically centred on the 240x320 LCD.
+ * Navigation markers use all four real pages, at the LCD bottom.
  */
 #define REFERENCE_SCENE_Y 40
 #define REFERENCE_SCENE_H 240
@@ -118,9 +118,13 @@ static uint16_t moving_color(unsigned tick, unsigned offset)
 
 static void page_marks(unsigned active)
 {
-    for (unsigned i = 0; i < PAGE_COUNT; i++)
-        rect(86 + (int)i * 19, 307, 10, 4,
-             i == active ? rgb(35,220,220) : rgb(40,63,77));
+    /* Exact prior layout (x=92,108,124,140; 8x8); aligned 16 px
+     * from the 320px panel bottom rather than the old 240px panel. */
+    const uint16_t cyan = rgb(35,220,220);
+    const uint16_t dim = rgb(45,60,75);
+    for (unsigned i = 0; i < UI_PAGE_COUNT; i++)
+        rect(92 + (int)i * 16, MARKER_Y, 8, 8,
+             i == active ? cyan : dim);
 }
 
 /*
@@ -142,12 +146,9 @@ static void accumulate_glitch(unsigned glitch_index, int x, int y)
 
 static void render_home(unsigned phase)
 {
-    const uint16_t surround = rgb(4,7,12);
-    const uint16_t vivid_blue = rgb(0,119,228);
+    const uint16_t bg = rgb(4,7,12);
     const uint16_t white = rgb(240,245,250);
-    const uint16_t cyan = rgb(30,235,245);
-    rect(0,0,LCD_W,LCD_H,surround);
-    rect(0,REFERENCE_SCENE_Y,LCD_W,REFERENCE_SCENE_H,vivid_blue);
+    rect(0,0,LCD_W,LCD_H,bg);
 
     /* Original logo palette: -PI index (glyph + phase) % 5. */
     text(14,REFERENCE_SCENE_Y+39,"PRISMA",4,white);
@@ -156,17 +157,15 @@ static void render_home(unsigned phase)
     text(206,REFERENCE_SCENE_Y+39,"I",4,moving_color(phase * 6U,2));
     centered_text(REFERENCE_SCENE_Y+118,"CAMERA",3,white);
     centered_text(REFERENCE_SCENE_Y+156,"SYNTH",3,white);
-
-    /* Eight cyan squares from the supplied reference photo. */
-    for (int i = 0; i < 8; ++i)
-        rect(58 + i * 17, REFERENCE_SCENE_Y + 222, 10, 8, cyan);
+    page_marks(UI_PAGE_HOME);
 }
 
 static void render_admin(unsigned tick)
 {
+    (void)tick;
     network_state_t net = {0};
     network_get_state(&net);
-    uint16_t ink=rgb(240,245,250), muted=rgb(100,131,149), accent=moving_color(tick,0);
+    uint16_t ink=rgb(240,245,250), muted=rgb(75,82,90), accent=rgb(35,220,220);
     rect(0,0,LCD_W,LCD_H,rgb(4,7,12));
     
     centered_text(33,"ADMIN",4,ink);
@@ -180,11 +179,12 @@ static void render_admin(unsigned tick)
 
 static void render_network(unsigned tick)
 {
+    (void)tick;
     network_state_t net = {0};
     discovery_state_t mdns = {0};
     network_get_state(&net);
     discovery_get_state(&mdns);
-    uint16_t ink=rgb(240,245,250), muted=rgb(100,131,149), accent=moving_color(tick,2);
+    uint16_t ink=rgb(240,245,250), muted=rgb(75,82,90), accent=rgb(35,220,220);
     rect(0,0,LCD_W,LCD_H,rgb(4,7,12));
     
     centered_text(30,"NETWORK",3,ink);
@@ -199,13 +199,14 @@ static void render_network(unsigned tick)
 
 static void render_system(unsigned tick)
 {
+    (void)tick;
     storage_state_t st = {0};
     camera_hw_state_t cam = {0};
     touch_hw_state_t touch = {0};
     storage_get_state(&st);
     camera_hw_get_state(&cam);
     touch_hw_get_state(&touch);
-    uint16_t ink=rgb(240,245,250), muted=rgb(100,131,149), accent=moving_color(tick,4);
+    uint16_t ink=rgb(240,245,250), muted=rgb(75,82,90), accent=rgb(35,220,220);
     rect(0,0,LCD_W,LCD_H,rgb(4,7,12));
     
     centered_text(30,"SYSTEM",3,ink);
