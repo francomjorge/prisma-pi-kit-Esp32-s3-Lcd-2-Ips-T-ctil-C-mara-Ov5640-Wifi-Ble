@@ -42,6 +42,13 @@ assert 'settings_footer(page)' in admin
 assert 'RESET NETWORK' in admin and 'RESET ADMIN PASS' in admin
 assert 'BACK TO PRISMA' in function_body('settings_footer')
 assert 'CONFIRM REQUIRED' in function_body('render_confirm')
+assert "UNIQUE HOSTNAME" in s and "MDNS ADDRESS" in s and "DIRECT AP ADDRESS" in s
+assert "discovery_get_state(&discovery)" in s
+assert "net.sta_connected&&net.sta_ip[0]" in s
+swipe=Path("main/touch_hw.c").read_text(encoding="utf-8")
+assert "#define TOUCH_SWIPE_MIN_PX 34" in swipe
+assert "abs(dx) >= TOUCH_SWIPE_MIN_PX && abs(dx) >= 2 * abs(dy)" in swipe
+assert "#define TOUCH_LOCKOUT_MS 320U" in swipe
 assert 'network_forget_sta()' in s
 assert 'auth_factory_reset()' in s
 
