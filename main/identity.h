@@ -8,5 +8,5 @@
 #define PRISMA_HOSTNAME "prisma-pi-camera-synth"
 #define PRISMA_MDNS_URL "http://prisma-pi-camera-synth.local/"
 #define PRISMA_AP_PREFIX "PRISMA-PI-CAMERA-SYNTH-"
-#define PRISMA_FIRMWARE_VERSION "CS010R.1"
-#define PRISMA_BUILD_ID "CS010R"
+#define PRISMA_FIRMWARE_VERSION "CS010S.1"
+#define PRISMA_BUILD_ID "CS010S"
