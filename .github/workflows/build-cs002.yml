@@ -20,7 +20,7 @@ jobs:
           import re, subprocess, tempfile
           for html in Path("main/web").glob("*.html"):
               source = html.read_text(encoding="utf-8")
-              for i, script in enumerate(re.findall(r"<script(?:\\s[^>]*)?>(.*?)</script\\s*>", source, re.I | re.S)):
+              for i, script in enumerate(re.findall(r"<script(?:\s[^>]*)?>(.*?)</script\s*>", source, re.I | re.S)):
                   with tempfile.NamedTemporaryFile(mode="w", suffix=".js", encoding="utf-8") as tmp:
                       tmp.write(script)
                       tmp.flush()
