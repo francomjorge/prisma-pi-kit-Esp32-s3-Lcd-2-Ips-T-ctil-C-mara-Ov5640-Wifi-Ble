@@ -23,7 +23,7 @@
 #define MARKER_Y (LCD_H - 16)
 #define TOUCH_POLL_MS 25
 
-static const char *TAG = "CS010X_LCD";
+static const char *TAG = "CS010Y_LCD";
 static uint16_t *frame;
 static uint16_t *stripe[2];
 static esp_lcd_panel_handle_t panel;
@@ -209,10 +209,21 @@ static void render_settings(int page)
         text(12,52,"NAME",1,dim);
         text(12,66,cfg.friendly_name[0]?cfg.friendly_name:"NOT SET",1,wh);
         text(12,86,"UNIQUE HOSTNAME",1,dim);
-        text(12,100,discovery.hostname[0]?discovery.hostname:cfg.hostname,1,cy);
+        /* Hostname is DNS-lowercase, but the 5x7 LCD font has ONLY
+         * uppercase glyphs. Convert a DISPLAY COPY, never the DNS config. */
+        const char *raw_host=discovery.hostname[0]?discovery.hostname:cfg.hostname;
+        char host_lcd[40]={0};
+        snprintf(host_lcd,sizeof(host_lcd),"%s",raw_host);
+        for(size_t i=0;host_lcd[i];i++){
+            if(host_lcd[i]>='a'&&host_lcd[i]<='z')
+                host_lcd[i]=(char)(host_lcd[i]-'a'+'A');
+        }
+        text(12,100,host_lcd,1,cy);
         text(12,120,"MDNS ADDRESS",1,dim);
-        snprintf(b,sizeof(b),"%.33s.local",discovery.hostname[0]?discovery.hostname:cfg.hostname);
-        text(12,134,b,1,wh);
+        char mdns_lcd[48]={0};
+        snprintf(mdns_lcd,sizeof(mdns_lcd),"%s.LOCAL",host_lcd);
+        /* Up to 38 glyphs fit within 240px at 6px per glyph. */
+        text(6,134,mdns_lcd,1,wh);
         text(12,154,"DIRECT AP ADDRESS",1,dim);
         text(12,169,net.ip[0]?net.ip:"192.168.4.1",2,cy);
         text(12,197,"LAN IP",1,dim);
@@ -246,7 +257,7 @@ static void render_settings(int page)
         centered_button(197,35,"RESET ADMIN PASS");
     }else{
         centered_text(24,"SYSTEM",3,cy);
-        centered_text(70,"CS010X PLATFORM",2,wh);
+        centered_text(70,"CS010Y PLATFORM",2,wh);
         snprintf(b,sizeof(b),"UP %llu SEC",(unsigned long long)(esp_timer_get_time()/1000000ULL));
         centered_text(115,b,2,wh);
         snprintf(b,sizeof(b),"HEAP %u KB",(unsigned)(esp_get_free_heap_size()/1024U));
