@@ -215,7 +215,7 @@ static void render_system(unsigned tick)
     centered_text(155,cam.ready?"CAMERA PROBED":"CAMERA ERROR",2,ink);
     centered_text(190,st.internal.mounted?"STORAGE READY":"STORAGE OFF",2,ink);
     centered_text(232,"ADMIN VIA WEB",2,ink);
-    centered_text(276,"SWIPE HOME",1,muted);
+    centered_text(276,"SWIPE RIGHT: BACK",1,muted);
     page_marks(3);
 }
 
