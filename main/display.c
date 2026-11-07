@@ -13,6 +13,8 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "app.h"
+#include "ui_model.h"
+#include "esp_timer.h"
 
 #define LCD_W 240
 #define LCD_H 320
@@ -65,12 +67,12 @@ static esp_err_t wait_dma(void)
     return xSemaphoreTake(dma_done, pdMS_TO_TICKS(1000)) == pdTRUE ? ESP_OK : ESP_ERR_TIMEOUT;
 }
 
-static esp_err_t present_once(void)
+static esp_err_t present_region(int y0, int y1)
 {
     int pending = 0;
     int seq = 0;
-    for (int y = 0; y < LCD_H; y += DMA_ROWS) {
-        int rows = (y + DMA_ROWS <= LCD_H) ? DMA_ROWS : (LCD_H - y);
+    for (int y = y0; y < y1; y += DMA_ROWS) {
+        int rows = (y + DMA_ROWS <= y1) ? DMA_ROWS : (y1 - y);
         if (pending == 2) {
             esp_err_t e = wait_dma();
             if (e != ESP_OK) return e;
@@ -89,6 +91,11 @@ static esp_err_t present_once(void)
         --pending;
     }
     return ESP_OK;
+}
+
+static esp_err_t present_once(void)
+{
+    return present_region(0, LCD_H);
 }
 
 /* Reference appearance: PRISMA-PI SIMPLE SYNTH (Build 58).
@@ -116,24 +123,26 @@ static void page_marks(unsigned active)
              i == active ? rgb(35,220,220) : rgb(40,63,77));
 }
 
-static void glitch_pixels(unsigned tick, int origin_x, int origin_y)
+/*
+ * Exact legacy algorithm from prisma-pi-lite-waveshare/main/main.c:
+ * nine colourful rectangles per tap, count-dependent offsets. We do not clear
+ * the scene here, so every previous tap remains visible until page navigation.
+ */
+static void accumulate_glitch(unsigned glitch_index, int x, int y)
 {
-    /* Deterministic animated burst of 32 independent pixel blocks; no lines. */
-    for (int i = 0; i < 32; ++i) {
-        unsigned seed = (unsigned)i * 7919U + tick * 113U;
-        int dx = (int)((seed * 37U + 17U) % 139U) - 69;
-        int dy = (int)((seed * 53U + 31U) % 143U) - 71;
-        int x = origin_x + dx;
-        int y = origin_y + dy;
-        int size = 4 + (int)((seed >> 4) % 4U) * 3;
-        if (x < 1 || x + size >= LCD_W ||
-            y < REFERENCE_SCENE_Y + 3 ||
-            y + size > REFERENCE_SCENE_Y + REFERENCE_SCENE_H - 4) continue;
-        rect(x,y,size,size,moving_color(tick,(unsigned)i));
+    for (int i = 0; i < 9; i++) {
+        int dx = (int)(((unsigned)i * 17U + glitch_index * 11U) % 55U) - 27;
+        int dy = (int)(((unsigned)i * 23U + glitch_index * 7U) % 55U) - 27;
+        int size = 4 + (int)(((unsigned)i + glitch_index) % 4U) * 3;
+        int px = x + dx, py = y + dy;
+        if (px < 0 || px + size > LCD_W ||
+            py < REFERENCE_SCENE_Y ||
+            py + size > REFERENCE_SCENE_Y + REFERENCE_SCENE_H) continue;
+        rect(px, py, size, size, moving_color(0, ((unsigned)i + glitch_index) % 5U));
     }
 }
 
-static void render_home(unsigned tick, unsigned glitch, int tap_x, int tap_y)
+static void render_home(unsigned phase)
 {
     const uint16_t surround = rgb(4,7,12);
     const uint16_t vivid_blue = rgb(0,119,228);
@@ -142,25 +151,17 @@ static void render_home(unsigned tick, unsigned glitch, int tap_x, int tap_y)
     rect(0,0,LCD_W,LCD_H,surround);
     rect(0,REFERENCE_SCENE_Y,LCD_W,REFERENCE_SCENE_H,vivid_blue);
 
-    /* The reference logo was precisely 212px wide at font scale 4. */
+    /* Original logo palette: -PI index (glyph + phase) % 5. */
     text(14,REFERENCE_SCENE_Y+39,"PRISMA",4,white);
-    text(158,REFERENCE_SCENE_Y+39,"-",4,moving_color(tick,2));
-    text(182,REFERENCE_SCENE_Y+39,"P",4,moving_color(tick,3));
-    text(206,REFERENCE_SCENE_Y+39,"I",4,moving_color(tick,4));
-
+    text(158,REFERENCE_SCENE_Y+39,"-",4,moving_color(phase * 6U,0));
+    text(182,REFERENCE_SCENE_Y+39,"P",4,moving_color(phase * 6U,1));
+    text(206,REFERENCE_SCENE_Y+39,"I",4,moving_color(phase * 6U,2));
     centered_text(REFERENCE_SCENE_Y+118,"CAMERA",3,white);
     centered_text(REFERENCE_SCENE_Y+156,"SYNTH",3,white);
 
-    /* Cyan page indicators of the original Simple Synth design. */
-    for (int i=0; i<8; ++i)
-        rect(58+i*17,REFERENCE_SCENE_Y+222,10,8,cyan);
-
-    if (glitch) {
-        if (tap_x < 20 || tap_x > 220) tap_x = 120;
-        if (tap_y < REFERENCE_SCENE_Y+85 || tap_y > REFERENCE_SCENE_Y+195)
-            tap_y = REFERENCE_SCENE_Y+138;
-        glitch_pixels(tick,tap_x,tap_y);
-    }
+    /* Eight cyan squares from the supplied reference photo. */
+    for (int i = 0; i < 8; ++i)
+        rect(58 + i * 17, REFERENCE_SCENE_Y + 222, 10, 8, cyan);
 }
 
 static void render_admin(unsigned tick)
@@ -221,50 +222,56 @@ static void render_system(unsigned tick)
 
 static void display_task(void *unused)
 {
-    unsigned tick = 0, page = 0, glitch = 0;
-    int glitch_x = 120, glitch_y = REFERENCE_SCENE_Y + 138;
-    unsigned last_page = PAGE_COUNT;
+    ui_model_t ui;
+    ui_model_init(&ui, (uint32_t)(esp_timer_get_time() / 1000ULL));
+    uint32_t last_status_redraw = 0;
+    bool initial = true;
+
     for (;;) {
+        uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
         int action = touch_hw_poll_action();
-        if (action == 2) {
-            page = (page + 1U) % PAGE_COUNT;
-            glitch = 0;
-        } else if (action == 3) {
-            page = (page + PAGE_COUNT - 1U) % PAGE_COUNT;
-            glitch = 0;
-        } else if (action == 1) {
-            if (page == 0) {
-                uint16_t x = 120, y = REFERENCE_SCENE_Y + 138;
-                touch_hw_last_point(&x,&y);
-                glitch_x = (int)x;
-                glitch_y = (int)y;
-                glitch = 12;
+        ui_change_t change = ui_model_input(&ui, action, now_ms);
+        esp_err_t err = ESP_OK;
+
+        if (initial || change == UI_CHANGE_PAGE) {
+            /* Entering any page explicitly clears previous glitch blocks.
+             * Returning HOME restarts the logo animation. */
+            initial = false;
+            switch (ui.page) {
+                case UI_PAGE_ADMIN:    render_admin(now_ms / 20U); break;
+                case UI_PAGE_NETWORK:  render_network(now_ms / 20U); break;
+                case UI_PAGE_SYSTEM:   render_system(now_ms / 20U); break;
+                default:               render_home(ui.phase); break;
             }
-            else page = 0;
+            err = present_once();
+            last_status_redraw = now_ms;
+        } else if (change == UI_CHANGE_ADD_GLITCH) {
+            uint16_t x = 120, y = REFERENCE_SCENE_Y + 138;
+            touch_hw_last_point(&x, &y);
+            /* The first tap freezes the animated -PI. Only draw added squares;
+             * do not call render_home again while glitch_count > 0. */
+            accumulate_glitch(ui.glitch_count - 1U, (int)x, (int)y);
+            err = present_region(REFERENCE_SCENE_Y,
+                                 REFERENCE_SCENE_Y + REFERENCE_SCENE_H);
+            ESP_LOGI(TAG, "GLITCH %lu accumulated; palette frozen",
+                     (unsigned long)ui.glitch_count);
+        } else if (ui_model_animation_step(&ui, now_ms)) {
+            render_home(ui.phase);
+            err = present_region(REFERENCE_SCENE_Y,
+                                 REFERENCE_SCENE_Y + REFERENCE_SCENE_H);
+        } else if (ui.page != UI_PAGE_HOME &&
+                   (uint32_t)(now_ms - last_status_redraw) >= 3000U) {
+            /* Update network/system status, not the frozen HOME framebuffer. */
+            if (ui.page == UI_PAGE_ADMIN) render_admin(now_ms / 20U);
+            else if (ui.page == UI_PAGE_NETWORK) render_network(now_ms / 20U);
+            else render_system(now_ms / 20U);
+            err = present_once();
+            last_status_redraw = now_ms;
         }
-        /* Do not repaint 150 KiB continuously while Wi-Fi clients connect.
-         * Keep frequent touch polling, draw only when a page changes, in a
-         * brief glitch, or periodically for changing status and logo. */
-        bool redraw = (page != last_page);
-        if (page == 0 && ((tick % 8U) == 0U || glitch)) redraw = true;
-        if (page != 0 && ((tick % 80U) == 0U)) redraw = true;
-        if (redraw) {
-            last_page = page;
-            switch (page) {
-                case 1: render_admin(tick); break;
-                case 2: render_network(tick); break;
-                case 3: render_system(tick); break;
-                default: render_home(tick,glitch,glitch_x,glitch_y); break;
-            }
-            esp_err_t e = present_once();
-            if (e != ESP_OK) {
-                ESP_LOGE(TAG,"LCD draw failed: %s",esp_err_to_name(e));
-                vTaskDelay(pdMS_TO_TICKS(300));
-            }
-            if (glitch) glitch--;
-        }
-        tick++;
-        vTaskDelay(pdMS_TO_TICKS(TOUCH_POLL_MS));
+
+        if (err != ESP_OK)
+            ESP_LOGE(TAG, "LCD draw failed: %s", esp_err_to_name(err));
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
 
@@ -307,7 +314,7 @@ esp_err_t display_start(void)
     if ((e = esp_lcd_panel_invert_color(panel, true)) != ESP_OK) return e;
     if ((e = esp_lcd_panel_disp_on_off(panel, true)) != ESP_OK) return e;
 
-    render_home(0,0,120,REFERENCE_SCENE_Y+138);
+    render_home(0);
     e = present_once();
     if (e != ESP_OK) return e;
     gpio_set_level(GPIO_NUM_1, 1);
@@ -319,6 +326,6 @@ esp_err_t display_start(void)
         s_ready = false;
         return ESP_ERR_NO_MEM;
     }
-    ESP_LOGI(TAG, "Reference PRISMA-PI blue UI, tap pixel glitch and swipe navigation started");
+    ESP_LOGI(TAG, "Legacy PRISMA-PI: palette pause + accumulated glitch, swipe-left ADMIN");
     return ESP_OK;
 }
