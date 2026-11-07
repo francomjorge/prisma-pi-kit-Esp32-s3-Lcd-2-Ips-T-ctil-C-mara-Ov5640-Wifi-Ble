@@ -213,7 +213,7 @@ static void render_settings(int page)
          * uppercase glyphs. Convert a DISPLAY COPY, never the DNS config. */
         const char *raw_host=discovery.hostname[0]?discovery.hostname:cfg.hostname;
         char host_lcd[40]={0};
-        snprintf(host_lcd,sizeof(host_lcd),"%s",raw_host);
+        strlcpy(host_lcd,raw_host,sizeof(host_lcd));
         for(size_t i=0;host_lcd[i];i++){
             if(host_lcd[i]>='a'&&host_lcd[i]<='z')
                 host_lcd[i]=(char)(host_lcd[i]-'a'+'A');
