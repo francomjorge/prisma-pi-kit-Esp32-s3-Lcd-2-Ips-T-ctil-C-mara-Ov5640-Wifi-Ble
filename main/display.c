@@ -130,15 +130,13 @@ static void page_marks(unsigned active)
  */
 static void accumulate_glitch(unsigned glitch_index, int x, int y)
 {
-    for (int i = 0; i < 9; i++) {
-        int dx = (int)(((unsigned)i * 17U + glitch_index * 11U) % 55U) - 27;
-        int dy = (int)(((unsigned)i * 23U + glitch_index * 7U) % 55U) - 27;
-        int size = 4 + (int)(((unsigned)i + glitch_index) % 4U) * 3;
-        int px = x + dx, py = y + dy;
-        if (px < 0 || px + size > LCD_W ||
-            py < REFERENCE_SCENE_Y ||
-            py + size > REFERENCE_SCENE_Y + REFERENCE_SCENE_H) continue;
-        rect(px, py, size, size, moving_color(0, ((unsigned)i + glitch_index) % 5U));
+    for (unsigned i = 0; i < 9U; i++) {
+        ui_glitch_rect_t block = ui_model_glitch_rect(glitch_index,i,x,y);
+        if (block.x < 0 || block.x + block.size > LCD_W ||
+            block.y < REFERENCE_SCENE_Y ||
+            block.y + block.size > REFERENCE_SCENE_Y + REFERENCE_SCENE_H) continue;
+        rect(block.x, block.y, block.size, block.size,
+             moving_color(0, block.palette_index));
     }
 }
 
