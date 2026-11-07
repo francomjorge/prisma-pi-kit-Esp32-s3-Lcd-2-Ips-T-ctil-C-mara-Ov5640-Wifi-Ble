@@ -23,7 +23,7 @@
 #define MARKER_Y (LCD_H - 16)
 #define TOUCH_POLL_MS 25
 
-static const char *TAG = "CS010W_LCD";
+static const char *TAG = "CS010X_LCD";
 static uint16_t *frame;
 static uint16_t *stripe[2];
 static esp_lcd_panel_handle_t panel;
@@ -203,13 +203,21 @@ static void render_settings(int page)
     rect(0,0,LCD_W,LCD_H,rgb(4,7,12));
     if(page==0){
         prisma_settings_t cfg={0};settings_get(&cfg);
-        centered_text(26,"DEVICE",3,cy);
-        centered_text(66,"PRISMA-PI CAMERA",1,wh);
-        centered_text(89,"NAME",1,dim);
-        centered_text(107,cfg.friendly_name,1,wh);
-        centered_text(137,"HOSTNAME",1,dim);
-        centered_text(155,cfg.hostname,1,wh);
-        centered_text(188,"ADMIN VIA BROWSER",1,cy);
+        network_state_t net={0};network_get_state(&net);
+        discovery_state_t discovery={0};discovery_get_state(&discovery);
+        centered_text(17,"DEVICE",3,cy);
+        text(12,52,"NAME",1,dim);
+        text(12,66,cfg.friendly_name[0]?cfg.friendly_name:"NOT SET",1,wh);
+        text(12,86,"UNIQUE HOSTNAME",1,dim);
+        text(12,100,discovery.hostname[0]?discovery.hostname:cfg.hostname,1,cy);
+        text(12,120,"MDNS ADDRESS",1,dim);
+        snprintf(b,sizeof(b),"%.33s.local",discovery.hostname[0]?discovery.hostname:cfg.hostname);
+        text(12,134,b,1,wh);
+        text(12,154,"DIRECT AP ADDRESS",1,dim);
+        text(12,169,net.ip[0]?net.ip:"192.168.4.1",2,cy);
+        text(12,197,"LAN IP",1,dim);
+        text(12,211,net.sta_connected&&net.sta_ip[0]?net.sta_ip:"NOT CONNECTED",1,wh);
+        centered_text(235,"ADMIN VIA BROWSER",1,cy);
     }else if(page==1){
         network_state_t net={0};network_get_state(&net);
         centered_text(24,"NETWORK",3,cy);
@@ -238,7 +246,7 @@ static void render_settings(int page)
         centered_button(197,35,"RESET ADMIN PASS");
     }else{
         centered_text(24,"SYSTEM",3,cy);
-        centered_text(70,"CS010W PLATFORM",2,wh);
+        centered_text(70,"CS010X PLATFORM",2,wh);
         snprintf(b,sizeof(b),"UP %llu SEC",(unsigned long long)(esp_timer_get_time()/1000000ULL));
         centered_text(115,b,2,wh);
         snprintf(b,sizeof(b),"HEAP %u KB",(unsigned)(esp_get_free_heap_size()/1024U));
