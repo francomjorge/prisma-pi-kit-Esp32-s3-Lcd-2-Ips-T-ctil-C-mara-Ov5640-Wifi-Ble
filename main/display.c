@@ -210,7 +210,7 @@ static void render_system(unsigned tick)
     rect(0,0,LCD_W,LCD_H,rgb(4,7,12));
     
     centered_text(30,"SYSTEM",3,ink);
-    centered_text(78,"CS010R PLATFORM",2,accent);
+    centered_text(78,"CS010S PLATFORM",2,accent);
     centered_text(120,touch.ready?"TOUCH READY":"TOUCH ERROR",2,ink);
     centered_text(155,cam.ready?"CAMERA PROBED":"CAMERA ERROR",2,ink);
     centered_text(190,st.internal.mounted?"STORAGE READY":"STORAGE OFF",2,ink);
