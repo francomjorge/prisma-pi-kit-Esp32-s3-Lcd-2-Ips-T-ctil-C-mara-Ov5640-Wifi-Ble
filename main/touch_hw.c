@@ -14,8 +14,9 @@
 static const char *TAG = "CS010R_TOUCH";
 static touch_hw_state_t s_state;
 static bool s_pressed;
+static bool s_consumed;
 static uint16_t s_x0, s_y0, s_x_last, s_y_last;
-static uint8_t s_samples;
+static uint8_t s_samples, s_release_samples;
 static uint64_t s_press_ms, s_event_ms;
 
 void touch_hw_get_state(touch_hw_state_t *out)
@@ -27,7 +28,9 @@ esp_err_t touch_hw_probe(void)
 {
     memset(&s_state, 0, sizeof(s_state));
     s_pressed = false;
+    s_consumed = false;
     s_samples = 0;
+    s_release_samples = 0;
     s_event_ms = 0;
     s_state.probed = true;
     s_state.address = TOUCH_ADDR;
@@ -58,9 +61,11 @@ fail:
 }
 
 /*
- * A tap must have two real contact samples and a clean release.
- * A swipe is resolved on release, then all events are locked out briefly.
- * This avoids the formerly observed autonomous tabs and tap-after-swipe.
+ * Build 58 touch behavior adapted to CST816D:
+ *  - detect horizontal swipe during a finger-down gesture (>55px);
+ *  - confirm tap only after stable release and small displacement;
+ *  - consume at most one action per contact;
+ *  - debounce to suppress repeat/ghost navigation.
  */
 int touch_hw_poll_action(void)
 {
@@ -68,51 +73,52 @@ int touch_hw_poll_action(void)
     uint8_t b[6] = {0};
     if (board_i2c_read_reg(TOUCH_ADDR, GESTURE_REG, b, sizeof(b), 30) != ESP_OK)
         return 0;
-
-    uint64_t now = (uint64_t)esp_timer_get_time() / 1000ULL;
-    bool finger = b[1] == 1;
-    uint16_t x = (uint16_t)(((b[2] & 0x0f) << 8) | b[3]);
-    uint16_t y = (uint16_t)(((b[4] & 0x0f) << 8) | b[5]);
-    uint8_t gesture = b[0];
+    const uint64_t now = (uint64_t)esp_timer_get_time() / 1000ULL;
+    const bool finger = (b[1] & 0x0f) == 1U;
+    const uint16_t x = (uint16_t)(((b[2] & 0x0f) << 8) | b[3]);
+    const uint16_t y = (uint16_t)(((b[4] & 0x0f) << 8) | b[5]);
 
     if (finger) {
+        s_release_samples = 0;
         if (!s_pressed) {
             s_pressed = true;
+            s_consumed = false;
             s_press_ms = now;
             s_x0 = s_x_last = x;
             s_y0 = s_y_last = y;
             s_samples = 1;
-        } else {
-            s_x_last = x;
-            s_y_last = y;
-            if (s_samples < 255) s_samples++;
+            return 0;
+        }
+        s_x_last = x;
+        s_y_last = y;
+        if (s_samples < UINT8_MAX) s_samples++;
+        const int dx = (int)x - (int)s_x0;
+        const int dy = (int)y - (int)s_y0;
+        if (!s_consumed && s_samples >= 2 && (now - s_press_ms) < 1400U &&
+            abs(dx) >= 55 && abs(dx) > abs(dy) &&
+            (!s_event_ms || now - s_event_ms >= TOUCH_LOCKOUT_MS)) {
+            s_consumed = true;
+            s_event_ms = now;
+            const int event = dx < 0 ? 2 : 3;
+            ESP_LOGI(TAG, "swipe=%d dx=%d dy=%d", event, dx, dy);
+            return event;
         }
         return 0;
     }
-    if (!s_pressed) return 0;
-    s_pressed = false;
 
-    uint64_t duration = now - s_press_ms;
-    int dx = (int)s_x_last - (int)s_x0;
-    int dy = (int)s_y_last - (int)s_y0;
-    if (duration > 1200 || s_samples < 2 ||
+    if (!s_pressed) return 0;
+    if (++s_release_samples < 3) return 0;
+    s_pressed = false;
+    s_release_samples = 0;
+    if (s_consumed) return 0;
+    const uint64_t duration = now - s_press_ms;
+    const int dx = (int)s_x_last - (int)s_x0;
+    const int dy = (int)s_y_last - (int)s_y0;
+    if (s_samples < 2 || duration > 700U ||
+        abs(dx) > 18 || abs(dy) > 18 ||
         (s_event_ms && now - s_event_ms < TOUCH_LOCKOUT_MS))
         return 0;
-
-    int event = 0;
-    /* Require an actual horizontal displacement, regardless of noisy gesture IDs. */
-    if (abs(dx) >= 42 && abs(dx) > abs(dy)) {
-        event = dx < 0 ? 2 : 3;
-    } else if (duration >= 65 && duration <= 650 &&
-               abs(dx) <= 18 && abs(dy) <= 18 &&
-               gesture != 1 && gesture != 2 &&
-               gesture != 3 && gesture != 4) {
-        event = 1;
-    }
-    if (event) {
-        s_event_ms = now;
-        ESP_LOGI(TAG, "event=%d dx=%d dy=%d duration=%llu ms",
-                 event, dx, dy, (unsigned long long)duration);
-    }
-    return event;
+    s_event_ms = now;
+    ESP_LOGI(TAG, "tap x=%u y=%u", (unsigned)s_x0, (unsigned)s_y0);
+    return 1;
 }
