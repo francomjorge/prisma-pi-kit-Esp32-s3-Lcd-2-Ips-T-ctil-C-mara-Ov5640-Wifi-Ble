@@ -198,6 +198,7 @@ static void render_system(unsigned tick)
 static void display_task(void *unused)
 {
     unsigned tick = 0, page = 0, glitch = 0;
+    unsigned last_page = PAGE_COUNT;
     for (;;) {
         int action = touch_hw_poll_action();
         if (action == 2) {
@@ -210,8 +211,14 @@ static void display_task(void *unused)
             if (page == 0) glitch = 12;
             else page = 0;
         }
-        /* Sample touch at 25ms even though the full SPI LCD redraw is slower. */
-        if ((tick & 3U) == 0U) {
+        /* Do not repaint 150 KiB continuously while Wi-Fi clients connect.
+         * Keep frequent touch polling, draw only when a page changes, in a
+         * brief glitch, or periodically for changing status and logo. */
+        bool redraw = (page != last_page);
+        if (page == 0 && ((tick % 8U) == 0U || glitch)) redraw = true;
+        if (page != 0 && ((tick % 80U) == 0U)) redraw = true;
+        if (redraw) {
+            last_page = page;
             switch (page) {
                 case 1: render_admin(tick); break;
                 case 2: render_network(tick); break;
