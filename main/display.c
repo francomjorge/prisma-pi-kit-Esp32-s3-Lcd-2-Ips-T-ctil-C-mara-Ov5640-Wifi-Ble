@@ -91,61 +91,85 @@ static esp_err_t present_once(void)
     return ESP_OK;
 }
 
-/* Changes the colour of each glyph in -PI every few rendered frames. */
-static uint16_t moving_color(unsigned t, unsigned offset)
+/* Reference appearance: PRISMA-PI SIMPLE SYNTH (Build 58).
+ * Camera appliance retains the exact visual grammar, not the old PCB pins:
+ * 240x240 saturated blue stage, black letterbox on the taller 240x320 LCD,
+ * white PRISMA, animated multicolour -PI, tap-triggered square glitch.
+ */
+#define REFERENCE_SCENE_Y 40
+#define REFERENCE_SCENE_H 240
+
+static uint16_t moving_color(unsigned tick, unsigned offset)
 {
     static const uint8_t palette[][3] = {
-        {0, 171, 255}, {125, 68, 245}, {255, 51, 151},
-        {255, 160, 42}, {24, 207, 169}, {64, 104, 250}
+        {30,120,255}, {175,55,255}, {255,35,150},
+        {255,120,25}, {45,225,120}
     };
-    unsigned i = ((t / 3U) + offset) % 6U;
+    unsigned i = ((tick / 6U) + offset) % 5U;
     return rgb(palette[i][0], palette[i][1], palette[i][2]);
 }
 
 static void page_marks(unsigned active)
 {
     for (unsigned i = 0; i < PAGE_COUNT; i++)
-        rect(91 + (int)i * 16, 307, 9, 3,
-             i == active ? rgb(17, 49, 70) : rgb(206, 214, 222));
+        rect(86 + (int)i * 19, 307, 10, 4,
+             i == active ? rgb(35,220,220) : rgb(40,63,77));
 }
 
-static void render_home(unsigned tick, unsigned glitch)
+static void glitch_pixels(unsigned tick, int origin_x, int origin_y)
 {
-    const uint16_t paper = rgb(255,255,255);
-    const uint16_t ink = rgb(22,26,32);
-    const uint16_t muted = rgb(107,115,123);
-    rect(0,0,LCD_W,LCD_H,paper);
-
-    /* PRISMA-PI: all nine glyphs fit inside 240px at scale 4. */
-    if (glitch && ((tick & 1U) == 0U)) {
-        text(17,76,"PRISMA",4,moving_color(tick,2));
-        text(161,76,"-PI",4,moving_color(tick,4));
-        rect((int)((tick * 31U) % 160U),105,60,3,moving_color(tick,0));
+    /* Deterministic animated burst of 32 independent pixel blocks; no lines. */
+    for (int i = 0; i < 32; ++i) {
+        unsigned seed = (unsigned)i * 7919U + tick * 113U;
+        int dx = (int)((seed * 37U + 17U) % 139U) - 69;
+        int dy = (int)((seed * 53U + 31U) % 143U) - 71;
+        int x = origin_x + dx;
+        int y = origin_y + dy;
+        int size = 4 + (int)((seed >> 4) % 4U) * 3;
+        if (x < 1 || x + size >= LCD_W ||
+            y < REFERENCE_SCENE_Y + 3 ||
+            y + size > REFERENCE_SCENE_Y + REFERENCE_SCENE_H - 4) continue;
+        rect(x,y,size,size,moving_color(tick,(unsigned)i));
     }
-    text(14,82,"PRISMA",4,ink);
-    text(158,82,"-",4,moving_color(tick,0));
-    text(182,82,"P",4,moving_color(tick,2));
-    text(206,82,"I",4,moving_color(tick,4));
-    if (glitch && tick % 3U == 0U) {
-        rect(18,111,202,2,moving_color(tick,3));
-        rect(44,123,148,2,moving_color(tick,1));
-    }
+}
 
-    centered_text(151,"CAMERA SYNTH",2,ink);
-    for(int i=0;i<4;i++) rect(24+i*48,185,42,4,moving_color(tick,(unsigned)i));
-    centered_text(223,"TAP GLITCH",2,muted);
-    centered_text(256,"SWIPE LEFT",2,muted);
-    centered_text(287,"VUDUM DEVELOPMENTS",1,muted);
-    page_marks(0);
+static void render_home(unsigned tick, unsigned glitch, int tap_x, int tap_y)
+{
+    const uint16_t surround = rgb(4,7,12);
+    const uint16_t vivid_blue = rgb(0,119,228);
+    const uint16_t white = rgb(240,245,250);
+    const uint16_t cyan = rgb(30,235,245);
+    rect(0,0,LCD_W,LCD_H,surround);
+    rect(0,REFERENCE_SCENE_Y,LCD_W,REFERENCE_SCENE_H,vivid_blue);
+
+    /* The reference logo was precisely 212px wide at font scale 4. */
+    text(14,REFERENCE_SCENE_Y+39,"PRISMA",4,white);
+    text(158,REFERENCE_SCENE_Y+39,"-",4,moving_color(tick,2));
+    text(182,REFERENCE_SCENE_Y+39,"P",4,moving_color(tick,3));
+    text(206,REFERENCE_SCENE_Y+39,"I",4,moving_color(tick,4));
+
+    centered_text(REFERENCE_SCENE_Y+118,"CAMERA",3,white);
+    centered_text(REFERENCE_SCENE_Y+156,"SYNTH",3,white);
+
+    /* Cyan page indicators of the original Simple Synth design. */
+    for (int i=0; i<8; ++i)
+        rect(58+i*17,REFERENCE_SCENE_Y+222,10,8,cyan);
+
+    if (glitch) {
+        if (tap_x < 20 || tap_x > 220) tap_x = 120;
+        if (tap_y < REFERENCE_SCENE_Y+85 || tap_y > REFERENCE_SCENE_Y+195)
+            tap_y = REFERENCE_SCENE_Y+138;
+        glitch_pixels(tick,tap_x,tap_y);
+    }
 }
 
 static void render_admin(unsigned tick)
 {
     network_state_t net = {0};
     network_get_state(&net);
-    uint16_t ink=rgb(24,27,35), muted=rgb(105,115,125), accent=moving_color(tick,0);
-    rect(0,0,LCD_W,LCD_H,rgb(253,253,254));
-    rect(0,0,LCD_W,6,accent);
+    uint16_t ink=rgb(240,245,250), muted=rgb(100,131,149), accent=moving_color(tick,0);
+    rect(0,0,LCD_W,LCD_H,rgb(4,7,12));
+    
     centered_text(33,"ADMIN",4,ink);
     centered_text(85,"WEB CONTROL",2,accent);
     centered_text(125,"CONNECT TO AP",2,ink);
@@ -161,9 +185,9 @@ static void render_network(unsigned tick)
     discovery_state_t mdns = {0};
     network_get_state(&net);
     discovery_get_state(&mdns);
-    uint16_t ink=rgb(24,27,35), muted=rgb(105,115,125), accent=moving_color(tick,2);
-    rect(0,0,LCD_W,LCD_H,rgb(253,253,254));
-    rect(0,0,LCD_W,6,accent);
+    uint16_t ink=rgb(240,245,250), muted=rgb(100,131,149), accent=moving_color(tick,2);
+    rect(0,0,LCD_W,LCD_H,rgb(4,7,12));
+    
     centered_text(30,"NETWORK",3,ink);
     centered_text(78,"AP ADDRESS",2,accent);
     centered_text(110,net.ip[0]?net.ip:"UNAVAILABLE",2,ink);
@@ -182,9 +206,9 @@ static void render_system(unsigned tick)
     storage_get_state(&st);
     camera_hw_get_state(&cam);
     touch_hw_get_state(&touch);
-    uint16_t ink=rgb(24,27,35), muted=rgb(105,115,125), accent=moving_color(tick,4);
-    rect(0,0,LCD_W,LCD_H,rgb(253,253,254));
-    rect(0,0,LCD_W,6,accent);
+    uint16_t ink=rgb(240,245,250), muted=rgb(100,131,149), accent=moving_color(tick,4);
+    rect(0,0,LCD_W,LCD_H,rgb(4,7,12));
+    
     centered_text(30,"SYSTEM",3,ink);
     centered_text(78,"CS010R PLATFORM",2,accent);
     centered_text(120,touch.ready?"TOUCH READY":"TOUCH ERROR",2,ink);
@@ -198,6 +222,7 @@ static void render_system(unsigned tick)
 static void display_task(void *unused)
 {
     unsigned tick = 0, page = 0, glitch = 0;
+    int glitch_x = 120, glitch_y = REFERENCE_SCENE_Y + 138;
     unsigned last_page = PAGE_COUNT;
     for (;;) {
         int action = touch_hw_poll_action();
@@ -208,7 +233,13 @@ static void display_task(void *unused)
             page = (page + PAGE_COUNT - 1U) % PAGE_COUNT;
             glitch = 0;
         } else if (action == 1) {
-            if (page == 0) glitch = 12;
+            if (page == 0) {
+                uint16_t x = 120, y = REFERENCE_SCENE_Y + 138;
+                touch_hw_last_point(&x,&y);
+                glitch_x = (int)x;
+                glitch_y = (int)y;
+                glitch = 12;
+            }
             else page = 0;
         }
         /* Do not repaint 150 KiB continuously while Wi-Fi clients connect.
@@ -223,7 +254,7 @@ static void display_task(void *unused)
                 case 1: render_admin(tick); break;
                 case 2: render_network(tick); break;
                 case 3: render_system(tick); break;
-                default: render_home(tick,glitch); break;
+                default: render_home(tick,glitch,glitch_x,glitch_y); break;
             }
             esp_err_t e = present_once();
             if (e != ESP_OK) {
@@ -276,7 +307,7 @@ esp_err_t display_start(void)
     if ((e = esp_lcd_panel_invert_color(panel, true)) != ESP_OK) return e;
     if ((e = esp_lcd_panel_disp_on_off(panel, true)) != ESP_OK) return e;
 
-    render_home(0,0);
+    render_home(0,0,120,REFERENCE_SCENE_Y+138);
     e = present_once();
     if (e != ESP_OK) return e;
     gpio_set_level(GPIO_NUM_1, 1);
@@ -288,6 +319,6 @@ esp_err_t display_start(void)
         s_ready = false;
         return ESP_ERR_NO_MEM;
     }
-    ESP_LOGI(TAG, "Animated PRISMA-PI, GLITCH, 4 swipe pages started");
+    ESP_LOGI(TAG, "Reference PRISMA-PI blue UI, tap pixel glitch and swipe navigation started");
     return ESP_OK;
 }
