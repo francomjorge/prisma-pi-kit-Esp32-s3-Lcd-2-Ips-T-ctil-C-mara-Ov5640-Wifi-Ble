@@ -18,7 +18,7 @@
 #define LCD_H 320
 #define DMA_ROWS 20
 #define PAGE_COUNT 4
-#define REFRESH_MS 100
+#define TOUCH_POLL_MS 25
 
 static const char *TAG = "CS010R_LCD";
 static uint16_t *frame;
@@ -210,20 +210,23 @@ static void display_task(void *unused)
             if (page == 0) glitch = 12;
             else page = 0;
         }
-        switch (page) {
-            case 1: render_admin(tick); break;
-            case 2: render_network(tick); break;
-            case 3: render_system(tick); break;
-            default: render_home(tick,glitch); break;
+        /* Sample touch at 25ms even though the full SPI LCD redraw is slower. */
+        if ((tick & 3U) == 0U) {
+            switch (page) {
+                case 1: render_admin(tick); break;
+                case 2: render_network(tick); break;
+                case 3: render_system(tick); break;
+                default: render_home(tick,glitch); break;
+            }
+            esp_err_t e = present_once();
+            if (e != ESP_OK) {
+                ESP_LOGE(TAG,"LCD draw failed: %s",esp_err_to_name(e));
+                vTaskDelay(pdMS_TO_TICKS(300));
+            }
+            if (glitch) glitch--;
         }
-        esp_err_t e = present_once();
-        if (e != ESP_OK) {
-            ESP_LOGE(TAG,"LCD draw failed: %s",esp_err_to_name(e));
-            vTaskDelay(pdMS_TO_TICKS(300));
-        }
-        if (glitch) glitch--;
         tick++;
-        vTaskDelay(pdMS_TO_TICKS(REFRESH_MS));
+        vTaskDelay(pdMS_TO_TICKS(TOUCH_POLL_MS));
     }
 }
 
