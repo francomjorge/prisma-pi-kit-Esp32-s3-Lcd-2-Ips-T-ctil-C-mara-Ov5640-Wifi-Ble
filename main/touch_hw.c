@@ -10,6 +10,8 @@
 #define TOUCH_CHIP_ID_REG 0xA7
 #define GESTURE_REG 0x01
 #define TOUCH_LOCKOUT_MS 320U
+/* Shorter deliberate horizontal gesture; do not relax tap filtering. */
+#define TOUCH_SWIPE_THRESHOLD_PX 30
 
 static const char *TAG = "CS010R_TOUCH";
 static touch_hw_state_t s_state;
@@ -69,7 +71,7 @@ fail:
 
 /*
  * Build 58 touch behavior adapted to CST816D:
- *  - detect horizontal swipe during a finger-down gesture (>55px);
+ *  - detect a short swipe during finger-down (>30px), with axis dominance;
  *  - confirm tap only after stable release and small displacement;
  *  - consume at most one action per contact;
  *  - debounce to suppress repeat/ghost navigation.
@@ -101,8 +103,9 @@ int touch_hw_poll_action(void)
         if (s_samples < UINT8_MAX) s_samples++;
         const int dx = (int)x - (int)s_x0;
         const int dy = (int)y - (int)s_y0;
-        if (!s_consumed && s_samples >= 2 && (now - s_press_ms) < 1400U &&
-            abs(dx) >= 55 && abs(dx) > abs(dy) &&
+        if (!s_consumed && s_samples >= 3 && (now - s_press_ms) >= 45U &&
+            (now - s_press_ms) < 1400U &&
+            abs(dx) >= TOUCH_SWIPE_THRESHOLD_PX && abs(dx) > abs(dy) + 10 &&
             (!s_event_ms || now - s_event_ms >= TOUCH_LOCKOUT_MS)) {
             s_consumed = true;
             s_last_action_x = x;
