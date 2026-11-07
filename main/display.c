@@ -23,7 +23,7 @@
 #define MARKER_Y (LCD_H - 16)
 #define TOUCH_POLL_MS 25
 
-static const char *TAG = "CS010W_LCD";
+static const char *TAG = "CS010X_LCD";
 static uint16_t *frame;
 static uint16_t *stripe[2];
 static esp_lcd_panel_handle_t panel;
@@ -202,14 +202,30 @@ static void render_settings(int page)
     char b[48]={0};
     rect(0,0,LCD_W,LCD_H,rgb(4,7,12));
     if(page==0){
-        prisma_settings_t cfg={0};settings_get(&cfg);
-        centered_text(26,"DEVICE",3,cy);
-        centered_text(66,"PRISMA-PI CAMERA",1,wh);
-        centered_text(89,"NAME",1,dim);
-        centered_text(107,cfg.friendly_name,1,wh);
-        centered_text(137,"HOSTNAME",1,dim);
-        centered_text(155,cfg.hostname,1,wh);
-        centered_text(188,"ADMIN VIA BROWSER",1,cy);
+        prisma_settings_t cfg={0}; settings_get(&cfg);
+        network_state_t net={0}; network_get_state(&net);
+        discovery_state_t mdns={0}; discovery_get_state(&mdns);
+        /* All values come from the running appliance, not constants.
+         * 240px wide: font scale 1 permits at most 40 characters/line. */
+        centered_text(17,"DEVICE",3,cy);
+        centered_text(49,"PRISMA-PI CAMERA",1,wh);
+        centered_text(68,"UNIQUE HOSTNAME",1,dim);
+        centered_text(83,cfg.hostname[0]?cfg.hostname:"UNAVAILABLE",1,wh);
+        centered_text(104,mdns.ready?"MDNS ADDRESS":"MDNS NOT READY",1,dim);
+        if(mdns.ready){
+            /* Full mDNS URL is up to 96 chars; render the host portion
+             * without the scheme/trailing slash, max 40 visible chars. */
+            snprintf(b,sizeof(b),"%.39s",mdns.url[0]?mdns.url+7:"UNAVAILABLE");
+            size_t n=strlen(b);if(n&&b[n-1]=='/')b[n-1]=0;
+            centered_text(119,b,1,cy);
+        }else{
+            centered_text(119,"USE DIRECT IP",1,dim);
+        }
+        centered_text(144,"DIRECT ADDRESS (AP)",1,dim);
+        centered_text(162,net.ip[0]?net.ip:"NOT AVAILABLE",2,wh);
+        centered_text(187,"STA ADDRESS",1,dim);
+        centered_text(203,net.sta_connected?net.sta_ip:"DISCONNECTED",1,wh);
+        centered_text(229,"ADMIN VIA BROWSER",1,cy);
     }else if(page==1){
         network_state_t net={0};network_get_state(&net);
         centered_text(24,"NETWORK",3,cy);
@@ -238,7 +254,7 @@ static void render_settings(int page)
         centered_button(197,35,"RESET ADMIN PASS");
     }else{
         centered_text(24,"SYSTEM",3,cy);
-        centered_text(70,"CS010W PLATFORM",2,wh);
+        centered_text(70,"CS010X PLATFORM",2,wh);
         snprintf(b,sizeof(b),"UP %llu SEC",(unsigned long long)(esp_timer_get_time()/1000000ULL));
         centered_text(115,b,2,wh);
         snprintf(b,sizeof(b),"HEAP %u KB",(unsigned)(esp_get_free_heap_size()/1024U));
