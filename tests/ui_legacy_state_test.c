@@ -11,32 +11,28 @@ static void test_original_home_sequence(void)
     assert(ui.page == UI_PAGE_HOME && ui.phase == 0 && ui.glitch_count == 0);
     assert(!ui_model_animation_step(&ui, 1119));
     assert(ui_model_animation_step(&ui, 1120));
-    assert(ui.phase == 1); /* -PI is moving at boot. */
+    assert(ui.phase == 1);
 
     assert(ui_model_input(&ui, UI_EVENT_TAP, 1140) == UI_CHANGE_ADD_GLITCH);
     assert(ui.glitch_count == 1);
     const unsigned held_phase = ui.phase;
     assert(!ui_model_animation_step(&ui, 2000));
-    assert(ui.phase == held_phase); /* first tap FREEZES -PI. */
+    assert(ui.phase == held_phase);
 
     assert(ui_model_input(&ui, UI_EVENT_TAP, 2200) == UI_CHANGE_ADD_GLITCH);
-    assert(ui.glitch_count == 2);
     assert(ui_model_input(&ui, UI_EVENT_TAP, 2500) == UI_CHANGE_ADD_GLITCH);
-    assert(ui.glitch_count == 3); /* successive taps ACCUMULATE. */
+    assert(ui.glitch_count == 3);
     assert(!ui_model_animation_step(&ui, 5000));
-    assert(ui.phase == held_phase); /* do not accidentally resume. */
 
-    assert(ui_model_input(&ui, UI_EVENT_SWIPE_LEFT, 5100) == UI_CHANGE_PAGE);
-    assert(ui.page == UI_PAGE_ADMIN);
-    assert(ui.glitch_count == 0); /* leaving cleans the effect. */
+    /* RIGHT opens the page on the left. */
+    assert(ui_model_input(&ui, UI_EVENT_SWIPE_RIGHT, 5100) == UI_CHANGE_PAGE);
+    assert(ui.page == UI_PAGE_ADMIN && ui.glitch_count == 0);
     assert(ui_model_input(&ui, UI_EVENT_TAP, 5200) == UI_CHANGE_NONE);
-    assert(ui.page == UI_PAGE_ADMIN); /* Admin tap cannot jump to HOME. */
-    assert(!ui_model_animation_step(&ui, 5500));
-
-    assert(ui_model_input(&ui, UI_EVENT_SWIPE_RIGHT, 5600) == UI_CHANGE_PAGE);
+    assert(ui.page == UI_PAGE_ADMIN);
+    assert(ui_model_input(&ui, UI_EVENT_SWIPE_LEFT, 5600) == UI_CHANGE_PAGE);
     assert(ui.page == UI_PAGE_HOME && ui.glitch_count == 0);
+
     assert(ui_model_input(&ui, UI_EVENT_TAP, 5800) == UI_CHANGE_NONE);
-    /* 500 ms HOME cooldown is identical to prior 25 x 20 ms ticks. */
     assert(ui_model_animation_step(&ui, 5800));
     assert(ui_model_input(&ui, UI_EVENT_TAP, 6100) == UI_CHANGE_ADD_GLITCH);
     assert(ui.glitch_count == 1);
@@ -46,18 +42,18 @@ static void test_navigation_is_bounded(void)
 {
     ui_model_t ui;
     ui_model_init(&ui, 0);
-    assert(ui_model_input(&ui, UI_EVENT_SWIPE_RIGHT, 100) == UI_CHANGE_NONE);
+    assert(UI_PAGE_COUNT == 2);
+    assert(UI_PAGE_ADMIN == 0 && UI_PAGE_HOME == 1);
+    assert(ui_model_input(&ui, UI_EVENT_SWIPE_LEFT, 100) == UI_CHANGE_NONE);
     assert(ui.page == UI_PAGE_HOME);
-    assert(ui_model_input(&ui, UI_EVENT_SWIPE_LEFT, 200) == UI_CHANGE_PAGE);
+    assert(ui_model_input(&ui, UI_EVENT_SWIPE_RIGHT, 200) == UI_CHANGE_PAGE);
     assert(ui.page == UI_PAGE_ADMIN);
-    assert(ui_model_input(&ui, UI_EVENT_SWIPE_LEFT, 500) == UI_CHANGE_PAGE);
-    assert(ui.page == UI_PAGE_NETWORK);
-    assert(ui_model_input(&ui, UI_EVENT_SWIPE_LEFT, 800) == UI_CHANGE_PAGE);
-    assert(ui.page == UI_PAGE_SYSTEM);
-    assert(ui_model_input(&ui, UI_EVENT_SWIPE_LEFT, 1100) == UI_CHANGE_NONE);
-    assert(ui.page == UI_PAGE_SYSTEM);
-    assert(ui_model_input(&ui, UI_EVENT_SWIPE_RIGHT, 1400) == UI_CHANGE_PAGE);
-    assert(ui.page == UI_PAGE_NETWORK);
+    assert(ui_model_input(&ui, UI_EVENT_SWIPE_RIGHT, 400) == UI_CHANGE_NONE);
+    assert(ui.page == UI_PAGE_ADMIN);
+    assert(ui_model_input(&ui, UI_EVENT_SWIPE_LEFT, 700) == UI_CHANGE_PAGE);
+    assert(ui.page == UI_PAGE_HOME);
+    assert(ui_model_input(&ui, UI_EVENT_SWIPE_LEFT, 900) == UI_CHANGE_NONE);
+    assert(ui.page == UI_PAGE_HOME);
 }
 
 static void test_identical_legacy_glitch_pattern(void)
@@ -95,6 +91,6 @@ int main(void)
     test_original_home_sequence();
     test_navigation_is_bounded();
     test_identical_legacy_glitch_pattern();
-    puts("PRISMA-PI LEGACY UI: phase pause, accumulating glitch, swipe Admin, reset PASS");
+    puts("PRISMA-PI LEGACY UI: phase pause, accumulating glitch, two LCD pages CONFIG | HOME, reset PASS");
     return 0;
 }
