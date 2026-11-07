@@ -1,7 +1,7 @@
 name: Build Camera Synth CS010R
 on:
   push:
-    branches: [main, cs010-network-resilience, cs010r-admin-touch-recovery]
+    branches: [main, cs010-network-resilience, cs010r-admin-touch-recovery, cs010s-web-crash-hardening]
   workflow_dispatch:
 permissions:
   contents: read
