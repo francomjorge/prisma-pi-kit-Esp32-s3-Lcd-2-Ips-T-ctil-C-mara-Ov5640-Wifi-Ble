@@ -6,7 +6,29 @@ on:
 permissions:
   contents: read
 jobs:
+  web-sanity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject invalid browser scripts before packaging firmware
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check main/web/admin.js
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess, tempfile
+          for html in Path("main/web").glob("*.html"):
+              source = html.read_text(encoding="utf-8")
+              for i, script in enumerate(re.findall(r"<script(?:\\s[^>]*)?>(.*?)</script\\s*>", source, re.I | re.S)):
+                  with tempfile.NamedTemporaryFile(mode="w", suffix=".js", encoding="utf-8") as tmp:
+                      tmp.write(script)
+                      tmp.flush()
+                      subprocess.run(["node", "--check", tmp.name], check=True)
+                      print(f"PASS {html.name}: inline script {i + 1}")
+          PY
   firmware:
+    needs: web-sanity
     runs-on: ubuntu-latest
     container: espressif/idf:v5.3.2
     steps:
