@@ -32,7 +32,8 @@ assert "LCD_NAV_PHOTO" in s and "render_photo()" in s
 assert "CAMERA ON" in s and "TAKE PHOTO" in s and "CAMERA OFF" in s
 assert "nav=LCD_NAV_PHOTO" in s
 assert "photo_power(true)" in s and "photo_take(NULL" in s
-assert "rect(111,304,6,6" in s and "rect(125,304,6,6" in s
+assert "rect(104,304,6,6" in s and "rect(118,304,6,6" in s and "rect(132,304,6,6" in s
+assert "LCD_NAV_FILES" in s and "render_files()" in s
 assert "settings_dots(" in s
 assert '#define SETTINGS_COUNT 5' in s
 assert 'settings_dots(page)' in s
