@@ -28,6 +28,11 @@ assert "UI_PAGE_ADMIN = 0" in model and "UI_PAGE_HOME = 1" in model
 assert '#define LCD_H 320' in s and '#define LCD_W 240' in s
 # Hidden gate has no main-carousel dots.
 assert "page_marks(" not in s
+assert "LCD_NAV_PHOTO" in s and "render_photo()" in s
+assert "CAMERA ON" in s and "TAKE PHOTO" in s and "CAMERA OFF" in s
+assert "nav=LCD_NAV_PHOTO" in s
+assert "photo_power(true)" in s and "photo_take(NULL" in s
+assert "rect(111,304,6,6" in s and "rect(125,304,6,6" in s
 assert "settings_dots(" in s
 assert '#define SETTINGS_COUNT 5' in s
 assert 'settings_dots(page)' in s
@@ -70,4 +75,4 @@ assert "vivid_blue" not in s and "rgb(0,119,228)" not in s
 assert "rgb(4,7,12)" in function_body("render_gate")
 assert "rgb(4,7,12)" in function_body("render_settings")
 assert "rgb(4,7,12)" in function_body("render_confirm")
-print("PASS: hidden gate, two buttons, five settings pages, confirmed local reset actions, black PRISMA palette")
+print("PASS: hidden gate, two buttons, five admin settings pages and right-side PHOTO, confirmed local reset actions, black PRISMA palette")
