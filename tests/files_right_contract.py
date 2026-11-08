@@ -15,7 +15,7 @@ assert 'storage_volume_root(volume)' in f
 assert 'opendir(dirpath)' in f and 'readdir(dir)' in f
 assert 'out->count<FILES_LCD_ROWS' in f and 'out->total=seen' in f
 assert 'files_lcd.c' in cmake
-assert 'FRAMESIZE_SVGA' in c and '.jpeg_quality = 8,' in c
-assert '800 × 600 · SVGA' in w
+assert 'FRAMESIZE_SVGA' in c and 's_qualities[s_quality_index].driver_quality' in c
+assert '800 × 600' in w
 assert "files/list?volume=internal&path=%2Fphotos" in w
 print('CS012A PASS: right-side paginated FILES reads shared FAT, SVGA photo, Web parity')
