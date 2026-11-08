@@ -69,4 +69,4 @@ assert "vivid_blue" not in s and "rgb(0,119,228)" not in s
 assert "rgb(4,7,12)" in function_body("render_gate")
 assert "rgb(4,7,12)" in function_body("render_settings")
 assert "rgb(4,7,12)" in function_body("render_confirm")
-print("PASS: hidden gate, two buttons, five settings pages, confirmed local reset actions, black PRISMA palette")
+print("PASS: hidden gate, two buttons, six settings pages, confirmed local reset actions, black PRISMA palette")
