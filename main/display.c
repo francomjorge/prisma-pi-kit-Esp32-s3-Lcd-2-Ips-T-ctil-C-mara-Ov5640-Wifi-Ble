@@ -23,7 +23,7 @@
 #define MARKER_Y (LCD_H - 16)
 #define TOUCH_POLL_MS 25
 
-static const char *TAG = "CS011R_LCD";
+static const char *TAG = "CS012A_LCD";
 static uint16_t *frame;
 static uint16_t *stripe[2];
 static esp_lcd_panel_handle_t panel;
@@ -146,8 +146,9 @@ static void render_home(unsigned phase)
     centered_text(REFERENCE_SCENE_Y+118,"CAMERA",3,white);
     centered_text(REFERENCE_SCENE_Y+156,"SYNTH",3,white);
     /* Only HOME and PHOTO are operational pages; SYSTEM is hidden. */
-    rect(111,304,6,6,rgb(35,220,220));
-    rect(125,304,6,6,rgb(45,60,75));
+    rect(104,304,6,6,rgb(35,220,220));
+    rect(118,304,6,6,rgb(45,60,75));
+    rect(132,304,6,6,rgb(45,60,75));
 }
 
 
@@ -157,7 +158,7 @@ static void render_home(unsigned phase)
  */
 #define SETTINGS_COUNT 5
 #define SETTINGS_DOTS_Y 307
-typedef enum { LCD_NAV_PRISMA=0, LCD_NAV_GATE, LCD_NAV_SETTINGS, LCD_NAV_CONFIRM, LCD_NAV_PHOTO } lcd_nav_t;
+typedef enum { LCD_NAV_PRISMA=0, LCD_NAV_GATE, LCD_NAV_SETTINGS, LCD_NAV_CONFIRM, LCD_NAV_PHOTO, LCD_NAV_FILES } lcd_nav_t;
 typedef enum { LCD_CONFIRM_NONE=0, LCD_CONFIRM_NETWORK, LCD_CONFIRM_ADMIN } lcd_confirm_t;
 
 static void centered_button(int y, int h, const char *label)
@@ -194,8 +195,90 @@ static void render_photo(void)
     centered_button(228,34,"CAMERA OFF");
     centered_text(273,s_photo_message,1,cy);
     centered_text(289,"SWIPE RIGHT HOME",1,dim);
-    rect(111,304,6,6,rgb(45,60,75));
-    rect(125,304,6,6,cy);
+    rect(104,304,6,6,dim);
+    rect(118,304,6,6,cy);
+    rect(132,304,6,6,dim);
+}
+
+static char s_files_path[FILES_LCD_PATH_MAX+1]="/";
+static char s_files_volume[12]="internal";
+static files_lcd_page_t s_files_page;
+static uint32_t s_files_offset;
+static char s_files_status[38]="";
+static uint32_t s_files_last_tap;
+
+static void files_refresh(void)
+{
+    esp_err_t e=files_lcd_list(s_files_volume,s_files_path,s_files_offset,&s_files_page);
+    if(e!=ESP_OK){
+        memset(&s_files_page,0,sizeof(s_files_page));
+        snprintf(s_files_status,sizeof(s_files_status),"FILES ERROR 0x%X",(unsigned)e);
+    }else{
+        snprintf(s_files_status,sizeof(s_files_status),"%lu FILES",(unsigned long)s_files_page.total);
+    }
+}
+
+static void files_parent(void)
+{
+    if(!strcmp(s_files_path,"/"))return;
+    char *slash=strrchr(s_files_path,'/');
+    if(slash){
+        if(slash==s_files_path)s_files_path[1]=0;
+        else *slash=0;
+    }
+    s_files_offset=0;
+    files_refresh();
+}
+
+static void files_select(int index)
+{
+    if(index<0||index>=s_files_page.count)return;
+    const files_lcd_entry_t *file=&s_files_page.rows[index];
+    if(file->directory){
+        char new_path[FILES_LCD_PATH_MAX+1];
+        int n=snprintf(new_path,sizeof(new_path),"%s%s%s",s_files_path,
+                 !strcmp(s_files_path,"/")?"":"/",file->name);
+        if(n<=0||n>=(int)sizeof(new_path)){
+            strlcpy(s_files_status,"PATH TOO LONG",sizeof(s_files_status));
+            return;
+        }
+        strlcpy(s_files_path,new_path,sizeof(s_files_path));
+        s_files_offset=0;
+        files_refresh();
+    }else{
+        snprintf(s_files_status,sizeof(s_files_status),"%.21s %lu KB",
+                 file->name,(unsigned long)((file->bytes+1023U)/1024U));
+    }
+}
+
+static void render_files(void)
+{
+    const uint16_t wh=rgb(240,245,250),cy=rgb(35,220,220),dim=rgb(75,82,90);
+    rect(0,0,LCD_W,LCD_H,rgb(4,7,12));
+    centered_text(12,"FILES",3,cy);
+    centered_button(52,29,!strcmp(s_files_volume,"internal")?"INTERNAL / SD":"SD / INTERNAL");
+    char title[43];
+    snprintf(title,sizeof(title),"%.32s",s_files_path);
+    text(9,92,title,1,wh);
+    for(int i=0;i<FILES_LCD_ROWS;i++){
+        int y=112+i*34;
+        if(i>=s_files_page.count)continue;
+        const files_lcd_entry_t *file=&s_files_page.rows[i];
+        rect(8,y,224,30,rgb(22,40,51));
+        char name[37];
+        snprintf(name,sizeof(name),"%s%.27s",file->directory?"D ":"F ",file->name);
+        text(14,y+10,name,1,file->directory?cy:wh);
+    }
+    rect(8,252,71,32,rgb(30,48,60));
+    rect(84,252,72,32,rgb(30,48,60));
+    rect(161,252,71,32,rgb(30,48,60));
+    text(19,261,"UP",2,wh);
+    text(92,261,"PREV",2,wh);
+    text(167,261,"NEXT",2,wh);
+    text(6,290,s_files_status,1,dim);
+    rect(104,304,6,6,dim);
+    rect(118,304,6,6,dim);
+    rect(132,304,6,6,cy);
 }
 
 static void render_gate(void)
@@ -281,7 +364,7 @@ static void render_settings(int page)
         centered_button(197,35,"RESET ADMIN PASS");
     }else{
         centered_text(24,"SYSTEM",3,cy);
-        centered_text(70,"CS011S PLATFORM",2,wh);
+        centered_text(70,"CS012A PLATFORM",2,wh);
         snprintf(b,sizeof(b),"UP %llu SEC",(unsigned long long)(esp_timer_get_time()/1000000ULL));
         centered_text(115,b,2,wh);
         snprintf(b,sizeof(b),"HEAP %u KB",(unsigned)(esp_get_free_heap_size()/1024U));
@@ -337,7 +420,11 @@ static void display_task(void *unused)
                 change=ui_model_input(&ui,action,now);
             }
         }else if(nav==LCD_NAV_PHOTO){
-            if(action==UI_EVENT_SWIPE_RIGHT){
+            if(action==UI_EVENT_SWIPE_LEFT){
+                nav=LCD_NAV_FILES;
+                files_refresh();
+                redraw=true;
+            }else if(action==UI_EVENT_SWIPE_RIGHT){
                 ui_model_init(&ui,now);
                 ui.home_cooldown_until_ms=now+500U;
                 nav=LCD_NAV_PRISMA;
@@ -361,6 +448,32 @@ static void display_task(void *unused)
                 }else if(ty>=223&&ty<270){
                     result=photo_power(false);
                     strlcpy(s_photo_message,result==ESP_OK?"CAMERA OFF":"DISABLE FAILED",sizeof(s_photo_message));
+                    redraw=true;
+                }
+            }
+        }else if(nav==LCD_NAV_FILES){
+            if(action==UI_EVENT_SWIPE_RIGHT){
+                nav=LCD_NAV_PHOTO;
+                redraw=true;
+            }else if(action==UI_EVENT_TAP&&(uint32_t)(now-s_files_last_tap)>350U){
+                s_files_last_tap=now;
+                if(ty>=50&&ty<87){
+                    strlcpy(s_files_volume,!strcmp(s_files_volume,"internal")?"sd":"internal",sizeof(s_files_volume));
+                    strlcpy(s_files_path,"/",sizeof(s_files_path));
+                    s_files_offset=0;files_refresh();redraw=true;
+                }else if(ty>=110&&ty<250){
+                    int index=((int)ty-112)/34;
+                    if(index>=0&&index<FILES_LCD_ROWS){files_select(index);redraw=true;}
+                }else if(ty>=252&&ty<289){
+                    if(tx<81)files_parent();
+                    else if(tx<158){
+                        s_files_offset=s_files_offset>=FILES_LCD_ROWS?s_files_offset-FILES_LCD_ROWS:0;
+                        files_refresh();
+                    }else{
+                        if(s_files_offset+FILES_LCD_ROWS<s_files_page.total)
+                            s_files_offset+=FILES_LCD_ROWS;
+                        files_refresh();
+                    }
                     redraw=true;
                 }
             }
@@ -420,6 +533,7 @@ static void display_task(void *unused)
             case LCD_NAV_SETTINGS: render_settings(settings_page);break;
             case LCD_NAV_CONFIRM: render_confirm(confirm,last_result);break;
             case LCD_NAV_PHOTO: render_photo();break;
+            case LCD_NAV_FILES: render_files();break;
             }
             e=present_once();
             last_redraw=now;
@@ -429,6 +543,8 @@ static void display_task(void *unused)
         }else if(nav==LCD_NAV_PRISMA&&ui_model_animation_step(&ui,now)){
             render_home(ui.phase);
             e=present_region(REFERENCE_SCENE_Y,REFERENCE_SCENE_Y+REFERENCE_SCENE_H);
+        }else if(nav==LCD_NAV_FILES&&(uint32_t)(now-last_redraw)>5000U){
+            files_refresh();render_files();e=present_once();last_redraw=now;
         }else if(nav==LCD_NAV_PHOTO&&(uint32_t)(now-last_redraw)>1500U){
             render_photo();e=present_once();last_redraw=now;
         }else if(nav==LCD_NAV_SETTINGS&&(uint32_t)(now-last_redraw)>3500U){
