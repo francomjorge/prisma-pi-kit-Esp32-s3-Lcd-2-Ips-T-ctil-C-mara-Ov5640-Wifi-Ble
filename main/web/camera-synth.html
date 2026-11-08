@@ -4,6 +4,8 @@
 <title>PRISMA-PI Camera Synth · PHOTO</title>
 <link rel="stylesheet" href="/shared.css">
 <style>
+.module-tabs{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0 20px}.module-tabs button{background:#142736;border:1px solid #355366;color:#d8e5ed;border-radius:8px;padding:10px 12px;cursor:pointer}.module-tabs button[aria-selected="true"]{border-color:#24cbd4;color:#fff;background:#164251}.module-tabs button:disabled{opacity:.5;cursor:default}.selects{display:flex;gap:15px;flex-wrap:wrap;padding:12px 0}.selects label{display:flex;flex-direction:column;gap:7px;font-weight:700}.selects select{min-height:43px;min-width:180px;background:#0c1b2a;color:#f0f5fa;border:1px solid #3b596c;border-radius:8px;padding:9px}
+
 .controls{display:flex;flex-wrap:wrap;gap:12px;margin:18px 0}
 .controls button,.controls a{background:#162b39;color:#f0f5fa;border:1px solid #3b596c;border-radius:9px;padding:13px 17px;min-height:48px;font-weight:700;cursor:pointer}
 .controls button:disabled{opacity:.35;cursor:not-allowed}
@@ -16,16 +18,32 @@
 <header class="site-header"><div><a class="brand" href="/">PRISMA<span class="dashp">-PI</span></a><span class="product-tag">CAMERA SYNTH</span></div>
 <nav class="topnav"><a href="/">PRODUCT</a><a class="active" href="/camera-synth">PHOTO</a><a href="/admin">ADMIN</a></nav></header>
 <main class="shell"><section style="padding:35px 0 8px">
-<div class="eyebrow">OPERATIONAL · CS012A</div><h1>PHOTO</h1>
+<div class="eyebrow">OPERATIONAL · CS012B</div><h1>PHOTO</h1>
 <p class="note">La misma cámara OV5640 que controlás desde la pantalla táctil. No se inicia streaming ni se hacen fotos al abrir esta página.</p>
 </section>
-<section class="workarea">
+<nav id="modules" class="module-tabs" aria-label="Camera Synth modules"></nav>
+<section class="workarea" id="photoModule">
+<h2>PHOTO / CAMERA</h2><p class="note">Captura y guardado real. Los demás módulos se mostrarán con su estado de implementación, sin controles falsos.</p>
 <div class="grid">
 <div class="card"><span class="label">CAMERA</span><strong id="state">CONSULTANDO</strong></div>
 <div class="card"><span class="label">PHOTOS</span><strong id="count">—</strong></div>
 <div class="card"><span class="label">PSRAM LIBRE</span><strong id="psram">—</strong></div>
-<div class="card"><span class="label">JPEG PHOTO</span><strong>800 × 600 · SVGA</strong></div>
+<div class="card"><span class="label">JPEG PHOTO</span><strong id="resolution">800 × 600 · SVGA</strong></div>
 </div>
+<div class="selects">
+<label>Resolución fotográfica<select id="photoSize">
+<option value="0">VGA · 640 × 480</option>
+<option value="1" selected>SVGA · 800 × 600</option>
+<option value="2">XGA · 1024 × 768</option>
+<option value="3">SXGA · 1280 × 1024</option>
+<option value="4">UXGA · 1600 × 1200</option>
+<option value="5">QXGA · 2048 × 1536</option>
+<option value="6">5 MP · 2592 × 1944</option>
+</select></label>
+<label>Compresión JPEG<select id="jpegQuality"><option value="0">Estándar · 12</option>
+<option value="1" selected>Alta · 8</option><option value="2">Máxima · 5</option></select></label>
+<button id="applyQuality" type="button">APLICAR CALIDAD</button>
+</div><p class="note">Los modos superiores a SVGA requieren PSRAM. La configuración se comparte con el LCD, queda activa hasta reiniciar y puede fallar si la memoria resulta insuficiente.</p>
 <div class="controls">
 <button id="on" type="button">CAMERA ON</button>
 <button id="take" type="button">TAKE PHOTO</button>
@@ -37,8 +55,8 @@
 <div class="preview"><img id="image" alt="Foto de cámara OV5640" hidden><p id="empty" class="note">Todavía no hay fotografía.</p></div>
 <div class="controls"><a id="download" download="prisma-photo.jpg" hidden>DOWNLOAD PHOTO</a></div>
 <section><h2>PHOTOS GUARDADAS EN ESP32</h2><p class="note">Capturas tomadas desde LCD y navegador en INTERNAL/photos. Cada TAKE PHOTO descarta el frame anterior y solicita uno nuevo.</p><div class="controls"><button id="reloadFiles" type="button">REFRESH PHOTOS</button></div><p id="filesMessage" class="note"></p><div id="gallery" class="grid"></div></section><p class="note">CAMERA OFF libera driver y buffers, sin iniciar streaming.</p>
-</section></main>
-<footer class="footer"><div class="shell">PRISMA-PI CAMERA SYNTH · CS012A</div></footer>
+</section><section class="workarea" id="futureModule" hidden><h2 id="moduleTitle"></h2><p id="moduleDesc" class="note"></p><p class="note">NO IMPLEMENTADO EN ESTE BUILD. Los controles quedan deshabilitados hasta validar la etapa correspondiente.</p></section></main>
+<footer class="footer"><div class="shell">PRISMA-PI CAMERA SYNTH · CS012B</div></footer>
 <script>
 const $=id=>document.getElementById(id);
 let runtime=null,busy=false,photoUrl=null;
@@ -58,6 +76,9 @@ function paint(){
  $('state').textContent=runtime.enabled?'READY':'OFF';
  $('count').textContent=String(runtime.photos);
  $('psram').textContent=Math.round(runtime.psram_free/1024)+' KiB';
+ $('resolution').textContent=runtime.width+' × '+runtime.height+' · '+runtime.resolution;
+ if(!busy){$('photoSize').value=String(runtime.size_index);$('jpegQuality').value=String(runtime.quality_index);}
+ $('applyQuality').disabled=busy||!runtime.supported;
  $('on').disabled=busy||!runtime.supported||runtime.enabled;
  $('off').disabled=busy||!runtime.enabled;
  $('take').disabled=busy||!runtime.enabled;
@@ -74,6 +95,17 @@ async function toggle(on){
   if(!on)release();
   message(on?'CAMERA READY · sin captura automática':'CAMERA OFF · buffers liberados');
  }catch(err){message('ERROR: '+err.message)}
+ finally{busy=false;await refresh();}
+}
+async function applyQuality(){
+ if(busy)return;
+ busy=true;paint();
+ try{
+  const size=$('photoSize').value,quality=$('jpegQuality').value;
+  runtime=await(await call('/api/v1/photo/options?size='+encodeURIComponent(size)+'&quality='+encodeURIComponent(quality),
+       {method:'POST',headers:{'X-PRISMA-Action':'1'}})).json();
+  message('CALIDAD APLICADA: '+runtime.width+' × '+runtime.height+' · '+runtime.jpeg_profile);
+ }catch(err){message('NO SE APLICÓ LA CALIDAD: '+err.message);}
  finally{busy=false;await refresh();}
 }
 async function takePhoto(){
@@ -109,6 +141,34 @@ async function loadPhotos(){
   $('gallery').innerHTML='';
  }
 }
+$('applyQuality').onclick=applyQuality;
+const sections=[
+ ['PHOTO','Foto JPEG, calidad y acceso a archivos','ready'],
+ ['LIVE','Imagen en vivo, resolución, FPS y estado REC','planned'],
+ ['VIDEO','Pipeline, recorte, orientación y pacing','planned'],
+ ['STREAM','Servidor de video, URL, bitrate, latencia y espectadores','planned'],
+ ['RECORD','Grabación, clips, loops y destinos','planned'],
+ ['PROCESS','Filtros, glitch, posterización y chroma key','planned'],
+ ['OVERLAYS','Texto, máscaras, imágenes y transparencia','planned'],
+ ['PRESETS','Guardar, cargar, importar y exportar escenas','planned'],
+ ['OUTPUT','Salidas LCD, navegador y pantallas externas','planned']
+];
+const modules=$('modules');
+function showModule(name){
+ const info=sections.find(x=>x[0]===name)||sections[0];
+ $('photoModule').hidden=name!=='PHOTO';
+ $('futureModule').hidden=name==='PHOTO';
+ $('moduleTitle').textContent=info[0];
+ $('moduleDesc').textContent=info[1];
+ for(const b of modules.children)b.setAttribute('aria-selected',String(b.dataset.module===name));
+}
+for(const [name,description,status] of sections){
+ const b=document.createElement('button');
+ b.type='button';b.textContent=name+(status==='ready'?' · ACTIVO':' · PENDIENTE');
+ b.title=description;b.dataset.module=name;b.onclick=()=>showModule(name);
+ modules.appendChild(b);
+}
+showModule('PHOTO');
 $('reloadFiles').onclick=loadPhotos;
 $('take').onclick=takePhoto;
 refresh();
