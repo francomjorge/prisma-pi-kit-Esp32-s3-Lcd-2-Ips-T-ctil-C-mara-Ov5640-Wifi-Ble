@@ -177,6 +177,7 @@ static void settings_dots(int active)
 }
 
 static char s_photo_message[32]="READY";
+static uint32_t s_last_photo_tap_ms;
 static void render_photo(void)
 {
     const uint16_t wh=rgb(240,245,250),cy=rgb(35,220,220),dim=rgb(75,82,90);
@@ -341,7 +342,8 @@ static void display_task(void *unused)
                 ui.home_cooldown_until_ms=now+500U;
                 nav=LCD_NAV_PRISMA;
                 redraw=true;
-            }else if(action==UI_EVENT_TAP){
+            }else if(action==UI_EVENT_TAP && (uint32_t)(now-s_last_photo_tap_ms)>=850U){
+                s_last_photo_tap_ms=now;
                 esp_err_t result=ESP_ERR_INVALID_ARG;
                 if(ty>=135&&ty<179){
                     result=photo_power(true);
@@ -350,7 +352,11 @@ static void display_task(void *unused)
                 }else if(ty>=179&&ty<223){
                     char saved[48]={0};
                     result=photo_take(NULL,saved,sizeof(saved));
-                    strlcpy(s_photo_message,result==ESP_OK?"PHOTO SAVED":"PHOTO FAILED",sizeof(s_photo_message));
+                    if(result==ESP_OK){
+                        snprintf(s_photo_message,sizeof(s_photo_message),"SAVED %s",saved+8);
+                    }else{
+                        snprintf(s_photo_message,sizeof(s_photo_message),"ERROR 0x%X",(unsigned)result);
+                    }
                     redraw=true;
                 }else if(ty>=223&&ty<270){
                     result=photo_power(false);
