@@ -139,6 +139,21 @@ esp_err_t board_i2c_probe(uint8_t address, uint32_t timeout_ms);
 esp_err_t board_i2c_read_reg(uint8_t address, uint8_t reg, uint8_t *data, size_t len, uint32_t timeout_ms);
 esp_err_t board_i2c_write_reg(uint8_t address, uint8_t reg, const uint8_t *data, size_t len, uint32_t timeout_ms);
 
+#define FILES_LCD_ROWS 4
+#define FILES_LCD_PATH_MAX 90
+typedef struct {
+    char name[64];
+    bool directory;
+    uint32_t bytes;
+} files_lcd_entry_t;
+typedef struct {
+    files_lcd_entry_t rows[FILES_LCD_ROWS];
+    uint8_t count;
+    uint32_t total;
+} files_lcd_page_t;
+esp_err_t files_lcd_list(const char *volume,const char *logical,
+                         uint32_t offset,files_lcd_page_t *out);
+
 esp_err_t storage_start(void);
 void storage_get_state(storage_state_t *out);
 esp_err_t storage_internal_initialize(void);
