@@ -1,28 +1,28 @@
 #include <stdio.h>
 #include <string.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "esp_camera.h"
 #include "esp_heap_caps.h"
+#include "esp_http_server.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "app.h"
 
-static const char *TAG = "CS003_CAM";
+static const char *TAG = "CS011B_CAMERA";
 static camera_hw_state_t s_state;
+static SemaphoreHandle_t s_lock;
+static bool s_driver_active;
+static uint32_t s_capture_count;
+static uint32_t s_capture_failures;
+static uint32_t s_last_jpeg_bytes;
+static uint32_t s_last_capture_ms;
+static char s_runtime_error[64] = "none";
 
-void camera_hw_get_state(camera_hw_state_t *out)
+/* All camera consumers must enter through this one owner. One framebuffer
+ * is enough for a manually requested still; continuous modes come later. */
+static camera_config_t camera_config_default(void)
 {
-    if (out) *out = s_state;
-}
-
-esp_err_t camera_hw_probe(void)
-{
-    memset(&s_state, 0, sizeof(s_state));
-    s_state.probed = true;
-    s_state.xclk_hz = 20000000;
-    s_state.fb_count = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0 ? 2 : 1;
-    strlcpy(s_state.fb_location, s_state.fb_count == 2 ? "PSRAM" : "DRAM", sizeof(s_state.fb_location));
-    strlcpy(s_state.sensor_name, "NOT DETECTED", sizeof(s_state.sensor_name));
-    strlcpy(s_state.error, "initializing", sizeof(s_state.error));
-
     camera_config_t cfg = {
         .pin_pwdn = 17,
         .pin_reset = -1,
@@ -46,23 +46,79 @@ esp_err_t camera_hw_probe(void)
         .pixel_format = PIXFORMAT_JPEG,
         .frame_size = FRAMESIZE_QVGA,
         .jpeg_quality = 12,
-        .fb_count = s_state.fb_count,
-        .fb_location = s_state.fb_count == 2 ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM,
+        .fb_count = 1,
+        .fb_location = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) ?
+                        CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM,
         .grab_mode = CAMERA_GRAB_WHEN_EMPTY,
         .sccb_i2c_port = -1
     };
+    return cfg;
+}
 
+void camera_hw_get_state(camera_hw_state_t *out)
+{
+    if (out) *out = s_state; /* Inventory is fixed after boot probe. */
+}
+
+static esp_err_t start_driver_locked(void)
+{
+    if (s_driver_active) return ESP_OK;
+    if (!s_state.ready || !s_state.expected) return ESP_ERR_INVALID_STATE;
+    camera_config_t cfg = camera_config_default();
+    esp_err_t e = esp_camera_init(&cfg);
+    if (e == ESP_OK) {
+        s_driver_active = true;
+        strlcpy(s_runtime_error, "none", sizeof(s_runtime_error));
+        platform_log_event("INFO", "camera", "Camera driver enabled; idle until manual snapshot");
+    } else {
+        snprintf(s_runtime_error, sizeof(s_runtime_error), "%s", esp_err_to_name(e));
+        platform_log_event("ERROR", "camera", "Camera enable failed");
+    }
+    return e;
+}
+
+static esp_err_t stop_driver_locked(void)
+{
+    if (!s_driver_active) return ESP_OK;
+    esp_err_t e = esp_camera_deinit();
+    if (e == ESP_OK) {
+        s_driver_active = false;
+        strlcpy(s_runtime_error, "none", sizeof(s_runtime_error));
+        platform_log_event("INFO", "camera", "Camera disabled; driver and buffers released");
+    } else {
+        snprintf(s_runtime_error, sizeof(s_runtime_error), "%s", esp_err_to_name(e));
+        platform_log_event("ERROR", "camera", "Camera deinit failed");
+    }
+    return e;
+}
+
+esp_err_t camera_hw_probe(void)
+{
+    memset(&s_state, 0, sizeof(s_state));
+    s_state.probed = true;
+    s_state.xclk_hz = 20000000;
+    s_state.fb_count = 1;
+    strlcpy(s_state.fb_location,
+            heap_caps_get_total_size(MALLOC_CAP_SPIRAM) ? "PSRAM" : "DRAM",
+            sizeof(s_state.fb_location));
+    strlcpy(s_state.sensor_name, "NOT DETECTED", sizeof(s_state.sensor_name));
+    strlcpy(s_state.error, "initializing", sizeof(s_state.error));
+
+    if (!s_lock) s_lock = xSemaphoreCreateMutex();
+    if (!s_lock) return ESP_ERR_NO_MEM;
+
+    camera_config_t cfg = camera_config_default();
     esp_err_t err = esp_camera_init(&cfg);
     if (err != ESP_OK) {
-        snprintf(s_state.error, sizeof(s_state.error), "%s (0x%x)", esp_err_to_name(err), (unsigned)err);
-        ESP_LOGE(TAG, "OV5640 init/probe failed: %s", s_state.error);
+        snprintf(s_state.error, sizeof(s_state.error), "%s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "OV5640 probe failed: %s", s_state.error);
         return err;
     }
-
+    s_driver_active = true;
     sensor_t *sensor = esp_camera_sensor_get();
     if (!sensor) {
         strlcpy(s_state.error, "sensor handle unavailable", sizeof(s_state.error));
-        ESP_LOGE(TAG, "%s", s_state.error);
+        (void)stop_driver_locked();
         return ESP_FAIL;
     }
 
@@ -71,14 +127,116 @@ esp_err_t camera_hw_probe(void)
     s_state.midl = sensor->id.MIDL;
     s_state.ver = sensor->id.VER;
     camera_sensor_info_t *info = esp_camera_sensor_get_info(&sensor->id);
-    if (info && info->name) strlcpy(s_state.sensor_name, info->name, sizeof(s_state.sensor_name));
-    else snprintf(s_state.sensor_name, sizeof(s_state.sensor_name), "PID %04X", s_state.pid);
-
+    if (info && info->name)
+        strlcpy(s_state.sensor_name, info->name, sizeof(s_state.sensor_name));
+    else
+        snprintf(s_state.sensor_name, sizeof(s_state.sensor_name), "PID %04X", s_state.pid);
     s_state.expected = (s_state.pid == OV5640_PID);
     s_state.ready = true;
     strlcpy(s_state.error, "none", sizeof(s_state.error));
-    ESP_LOGI(TAG, "Camera probe OK sensor=%s PID=0x%04X MID=%02X%02X VER=%02X XCLK=%u fb=%u %s",
-             s_state.sensor_name, s_state.pid, s_state.midh, s_state.midl, s_state.ver,
-             (unsigned)s_state.xclk_hz, (unsigned)s_state.fb_count, s_state.fb_location);
+
+    /* Probe is inventory ONLY: no capture or allocated camera framebuffers
+     * survive startup. The operator explicitly ENABLES capture later. */
+    err = stop_driver_locked();
+    if (err != ESP_OK) {
+        strlcpy(s_state.error, "probe camera deinit failed", sizeof(s_state.error));
+        s_state.ready = false;
+        return err;
+    }
+    ESP_LOGI(TAG, "OV5640 probe OK sensor=%s PID=%04X; camera OFF, PSRAM released",
+             s_state.sensor_name, s_state.pid);
+    return ESP_OK;
+}
+
+static esp_err_t runtime_state_get(httpd_req_t *req)
+{
+    bool active = false;
+    uint32_t count=0,fail=0,bytes=0,ms=0;
+    char error[64];
+    if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(100)) != pdTRUE)
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                                   "camera state unavailable");
+    active=s_driver_active;count=s_capture_count;fail=s_capture_failures;
+    bytes=s_last_jpeg_bytes;ms=s_last_capture_ms;
+    strlcpy(error,s_runtime_error,sizeof(error));
+    xSemaphoreGive(s_lock);
+    char json[580];
+    int n=snprintf(json,sizeof(json),
+        "{\"schema\":\"prisma.camera.v1\",\"supported\":%s,\"enabled\":%s,"
+        "\"actual\":\"%s\",\"capture_count\":%lu,\"failures\":%lu,"
+        "\"last_jpeg_bytes\":%lu,\"last_capture_ms\":%lu,"
+        "\"psram_free_bytes\":%lu,\"last_error\":\"%s\","
+        "\"snapshot_url\":\"/api/v1/camera/snapshot.jpg\"}",
+        s_state.ready && s_state.expected ? "true" : "false",
+        active?"true":"false",active?"READY":"OFF",
+        (unsigned long)count,(unsigned long)fail,(unsigned long)bytes,
+        (unsigned long)ms,
+        (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),error);
+    if (n<0 || n>=(int)sizeof(json))
+        return httpd_resp_send_err(req,HTTPD_500_INTERNAL_SERVER_ERROR,"camera JSON overflow");
+    httpd_resp_set_type(req,"application/json");
+    httpd_resp_set_hdr(req,"Cache-Control","no-store");
+    return httpd_resp_send(req,json,n);
+}
+
+static esp_err_t camera_mode_post(httpd_req_t *req)
+{
+    bool enable = (strstr(req->uri, "/enable") != NULL);
+    if (!s_lock || xSemaphoreTake(s_lock,pdMS_TO_TICKS(100))!=pdTRUE)
+        return httpd_resp_send_err(req,HTTPD_500_INTERNAL_SERVER_ERROR,"camera busy");
+    esp_err_t e=enable?start_driver_locked():stop_driver_locked();
+    xSemaphoreGive(s_lock);
+    if(e!=ESP_OK)
+        return httpd_resp_send_err(req,HTTPD_500_INTERNAL_SERVER_ERROR,esp_err_to_name(e));
+    return runtime_state_get(req);
+}
+
+static esp_err_t snapshot_get(httpd_req_t *req)
+{
+    if (!s_lock || xSemaphoreTake(s_lock,pdMS_TO_TICKS(100))!=pdTRUE)
+        return httpd_resp_send_err(req,HTTPD_500_INTERNAL_SERVER_ERROR,"camera busy");
+    if (!s_driver_active) {
+        xSemaphoreGive(s_lock);
+        return httpd_resp_send_err(req,HTTPD_400_BAD_REQUEST,
+                                   "Camera OFF; press ENABLE CAMERA first");
+    }
+    uint64_t t0=(uint64_t)esp_timer_get_time();
+    camera_fb_t *fb=esp_camera_fb_get();
+    if (!fb || !fb->buf || !fb->len || fb->format!=PIXFORMAT_JPEG) {
+        if (fb) esp_camera_fb_return(fb);
+        ++s_capture_failures;
+        strlcpy(s_runtime_error,"invalid or unavailable JPEG framebuffer",
+                sizeof(s_runtime_error));
+        xSemaphoreGive(s_lock);
+        platform_log_event("ERROR","camera","Manual JPEG capture failed");
+        return httpd_resp_send_err(req,HTTPD_500_INTERNAL_SERVER_ERROR,
+                                   "camera snapshot failed");
+    }
+    const uint32_t latency=(uint32_t)(((uint64_t)esp_timer_get_time()-t0)/1000U);
+    ++s_capture_count;
+    s_last_jpeg_bytes=(uint32_t)fb->len;
+    s_last_capture_ms=latency;
+    httpd_resp_set_type(req,"image/jpeg");
+    httpd_resp_set_hdr(req,"Cache-Control","no-store");
+    esp_err_t result=httpd_resp_send(req,(const char *)fb->buf,(ssize_t)fb->len);
+    esp_camera_fb_return(fb); /* ALWAYS give driver buffer back. */
+    xSemaphoreGive(s_lock);
+    platform_log_event(result==ESP_OK?"INFO":"ERROR","camera",
+                       result==ESP_OK?"Manual JPEG captured":"Manual JPEG send failed");
+    return result;
+}
+
+esp_err_t camera_web_register(httpd_handle_t server)
+{
+    const httpd_uri_t endpoints[]={
+        {.uri="/api/v1/camera/runtime",.method=HTTP_GET,.handler=runtime_state_get},
+        {.uri="/api/v1/camera/enable",.method=HTTP_POST,.handler=camera_mode_post},
+        {.uri="/api/v1/camera/disable",.method=HTTP_POST,.handler=camera_mode_post},
+        {.uri="/api/v1/camera/snapshot.jpg",.method=HTTP_GET,.handler=snapshot_get},
+    };
+    for(size_t i=0;i<sizeof(endpoints)/sizeof(endpoints[0]);i++){
+        esp_err_t e=auth_register_uri_handler(server,&endpoints[i]);
+        if(e!=ESP_OK) return e;
+    }
     return ESP_OK;
 }
