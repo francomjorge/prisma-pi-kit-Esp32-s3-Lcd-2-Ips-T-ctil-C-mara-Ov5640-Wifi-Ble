@@ -253,8 +253,9 @@ static esp_err_t photo_toggle(httpd_req_t *r)
 static esp_err_t photo_capture_http(httpd_req_t *r)
 {
     esp_err_t e=photo_take(r,NULL,0);
-    if(e==ESP_ERR_INVALID_STATE)return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,"CAMERA OFF");
+    if(e==ESP_ERR_INVALID_STATE)return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,"CAMERA OFF OR INTERNAL STORAGE UNAVAILABLE");
     if(e==ESP_ERR_TIMEOUT)return httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,"CAMERA BUSY");
+    if(e==ESP_FAIL)return httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,"JPEG capture or storage write failed");
     if(e==ESP_ERR_INVALID_STATE)return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,"INTERNAL STORAGE NOT READY");
     return e;
 }
