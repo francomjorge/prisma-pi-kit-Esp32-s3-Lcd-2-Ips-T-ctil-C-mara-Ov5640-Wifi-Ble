@@ -23,7 +23,7 @@
 #define MARKER_Y (LCD_H - 16)
 #define TOUCH_POLL_MS 25
 
-static const char *TAG = "CS010Y_LCD";
+static const char *TAG = "CS011R_LCD";
 static uint16_t *frame;
 static uint16_t *stripe[2];
 static esp_lcd_panel_handle_t panel;
@@ -145,7 +145,9 @@ static void render_home(unsigned phase)
     text(206,REFERENCE_SCENE_Y+39,"I",4,moving_color(phase * 6U,2));
     centered_text(REFERENCE_SCENE_Y+118,"CAMERA",3,white);
     centered_text(REFERENCE_SCENE_Y+156,"SYNTH",3,white);
-    /* The hidden SYSTEM GATE is not part of PRISMA's page indicators. */
+    /* Only HOME and PHOTO are operational pages; SYSTEM is hidden. */
+    rect(111,304,6,6,rgb(35,220,220));
+    rect(125,304,6,6,rgb(45,60,75));
 }
 
 
@@ -155,7 +157,7 @@ static void render_home(unsigned phase)
  */
 #define SETTINGS_COUNT 5
 #define SETTINGS_DOTS_Y 307
-typedef enum { LCD_NAV_PRISMA=0, LCD_NAV_GATE, LCD_NAV_SETTINGS, LCD_NAV_CONFIRM } lcd_nav_t;
+typedef enum { LCD_NAV_PRISMA=0, LCD_NAV_GATE, LCD_NAV_SETTINGS, LCD_NAV_CONFIRM, LCD_NAV_PHOTO } lcd_nav_t;
 typedef enum { LCD_CONFIRM_NONE=0, LCD_CONFIRM_NETWORK, LCD_CONFIRM_ADMIN } lcd_confirm_t;
 
 static void centered_button(int y, int h, const char *label)
@@ -172,6 +174,27 @@ static void settings_dots(int active)
     const int start=(LCD_W - (SETTINGS_COUNT*6+(SETTINGS_COUNT-1)*8))/2;
     for(int i=0;i<SETTINGS_COUNT;i++)
         rect(start+i*14, SETTINGS_DOTS_Y,6,6,i==active?cyan:dim);
+}
+
+static char s_photo_message[32]="READY";
+static void render_photo(void)
+{
+    const uint16_t wh=rgb(240,245,250),cy=rgb(35,220,220),dim=rgb(75,82,90);
+    photo_state_t p={0};photo_state_get(&p);
+    rect(0,0,LCD_W,LCD_H,rgb(4,7,12));
+    centered_text(20,"PHOTO",3,cy);
+    centered_text(65,p.supported?"OV5640 DETECTED":"CAMERA UNAVAILABLE",1,wh);
+    centered_text(87,p.enabled?"CAMERA READY":"CAMERA OFF",2,p.enabled?cy:dim);
+    char b[40];
+    snprintf(b,sizeof(b),"PHOTOS %lu",(unsigned long)p.photos);
+    centered_text(112,b,1,wh);
+    centered_button(140,34,"CAMERA ON");
+    centered_button(184,34,"TAKE PHOTO");
+    centered_button(228,34,"CAMERA OFF");
+    centered_text(273,s_photo_message,1,cy);
+    centered_text(289,"SWIPE RIGHT HOME",1,dim);
+    rect(111,304,6,6,rgb(45,60,75));
+    rect(125,304,6,6,cy);
 }
 
 static void render_gate(void)
@@ -257,7 +280,7 @@ static void render_settings(int page)
         centered_button(197,35,"RESET ADMIN PASS");
     }else{
         centered_text(24,"SYSTEM",3,cy);
-        centered_text(70,"CS010Y PLATFORM",2,wh);
+        centered_text(70,"CS011R PLATFORM",2,wh);
         snprintf(b,sizeof(b),"UP %llu SEC",(unsigned long long)(esp_timer_get_time()/1000000ULL));
         centered_text(115,b,2,wh);
         snprintf(b,sizeof(b),"HEAP %u KB",(unsigned)(esp_get_free_heap_size()/1024U));
@@ -305,8 +328,35 @@ static void display_task(void *unused)
                 ui_model_input(&ui,action,now);
                 nav=LCD_NAV_GATE;
                 redraw=true;
+            }else if(action==UI_EVENT_SWIPE_LEFT){
+                nav=LCD_NAV_PHOTO;
+                strlcpy(s_photo_message,"READY",sizeof(s_photo_message));
+                redraw=true;
             }else if(action==UI_EVENT_TAP){
                 change=ui_model_input(&ui,action,now);
+            }
+        }else if(nav==LCD_NAV_PHOTO){
+            if(action==UI_EVENT_SWIPE_RIGHT){
+                ui_model_init(&ui,now);
+                ui.home_cooldown_until_ms=now+500U;
+                nav=LCD_NAV_PRISMA;
+                redraw=true;
+            }else if(action==UI_EVENT_TAP){
+                esp_err_t result=ESP_ERR_INVALID_ARG;
+                if(ty>=135&&ty<179){
+                    result=photo_power(true);
+                    strlcpy(s_photo_message,result==ESP_OK?"CAMERA READY":"ENABLE FAILED",sizeof(s_photo_message));
+                    redraw=true;
+                }else if(ty>=179&&ty<223){
+                    char saved[48]={0};
+                    result=photo_take(NULL,saved,sizeof(saved));
+                    strlcpy(s_photo_message,result==ESP_OK?"PHOTO SAVED":"PHOTO FAILED",sizeof(s_photo_message));
+                    redraw=true;
+                }else if(ty>=223&&ty<270){
+                    result=photo_power(false);
+                    strlcpy(s_photo_message,result==ESP_OK?"CAMERA OFF":"DISABLE FAILED",sizeof(s_photo_message));
+                    redraw=true;
+                }
             }
         }else if(nav==LCD_NAV_GATE){
             if(action==UI_EVENT_SWIPE_LEFT){
@@ -363,6 +413,7 @@ static void display_task(void *unused)
             case LCD_NAV_GATE: render_gate();break;
             case LCD_NAV_SETTINGS: render_settings(settings_page);break;
             case LCD_NAV_CONFIRM: render_confirm(confirm,last_result);break;
+            case LCD_NAV_PHOTO: render_photo();break;
             }
             e=present_once();
             last_redraw=now;
@@ -372,6 +423,8 @@ static void display_task(void *unused)
         }else if(nav==LCD_NAV_PRISMA&&ui_model_animation_step(&ui,now)){
             render_home(ui.phase);
             e=present_region(REFERENCE_SCENE_Y,REFERENCE_SCENE_Y+REFERENCE_SCENE_H);
+        }else if(nav==LCD_NAV_PHOTO&&(uint32_t)(now-last_redraw)>1500U){
+            render_photo();e=present_once();last_redraw=now;
         }else if(nav==LCD_NAV_SETTINGS&&(uint32_t)(now-last_redraw)>3500U){
             render_settings(settings_page);e=present_once();last_redraw=now;
         }
