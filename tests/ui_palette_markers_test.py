@@ -50,9 +50,12 @@ assert 'text(6,134,mdns_lcd,1,wh)' in s
 assert "discovery_get_state(&discovery)" in s
 assert "net.sta_connected&&net.sta_ip[0]" in s
 swipe=Path("main/touch_hw.c").read_text(encoding="utf-8")
-assert "#define TOUCH_SWIPE_MIN_PX 34" in swipe
-assert "abs(dx) >= TOUCH_SWIPE_MIN_PX && abs(dx) >= 2 * abs(dy)" in swipe
-assert "#define TOUCH_LOCKOUT_MS 320U" in swipe
+gesture=Path("main/touch_gesture.h").read_text(encoding="utf-8")
+assert "#define TOUCH_SWIPE_MIN_PX 34" not in swipe
+assert "TOUCHZ_SWIPE_PX=29" in gesture
+assert "TOUCHZ_ACTION_GUARD_MS=260" in gesture
+assert "TOUCHZ_CONTACT_MIN_MS=65" in gesture
+assert "touchz_feed(&s_gesture" in swipe
 assert 'network_forget_sta()' in s
 assert 'auth_factory_reset()' in s
 
