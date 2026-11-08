@@ -23,5 +23,10 @@ assert "platform_log_mode_set(mode)" in api
 assert "await api('/api/v1/logs/config'" in ui
 assert "async function setLogMode(" in ui
 assert "const result=await Promise.all([api('/api/v1/logs'),api('/api/v1/logs/config')])" in ui
+display=Path("main/display.c").read_text(encoding="utf-8")
+assert "platform_log_mode_name()" in display
+assert "platform_log_mode_get()" in display
+assert "platform_log_mode_set(next)" in display
+assert "settings_page==4" in display
 assert "PLATFORM_LOG_OFF" in header
 print("PASS: runtime log modes, bidirectional browser control and shared API")
