@@ -72,6 +72,8 @@ static esp_err_t health_get(httpd_req_t *req)
     network_state_t net = {0};
     storage_state_t storage = {0};
     camera_hw_state_t cam = {0};
+    camera_runtime_state_t camera_runtime = {0};
+    camera_runtime_get_state(&camera_runtime);
     touch_hw_state_t touch = {0};
     imu_hw_state_t imu = {0};
     discovery_state_t discovery = {0};
@@ -101,7 +103,7 @@ static esp_err_t health_get(httpd_req_t *req)
         "\"camera_hw\":\"%s\",\"touch_hw\":\"%s\",\"imu_hw\":\"%s\"},"
         "\"memory\":{\"heap_free\":%" PRIu32 ",\"heap_min\":%" PRIu32 ","
         "\"psram_free\":%" PRIu32 "},"
-        "\"policy\":{\"camera_capture\":false,\"stream\":false,"
+        "\"policy\":{\"camera_capture\":%s,\"stream\":false,"
         "\"touch_navigation\":false,\"admin_auth\":%s}}",
         core_ok && infra_ok ? "ready" : core_ok ? "degraded" : "error",
         (unsigned long long)(esp_timer_get_time() / 1000),
@@ -115,7 +117,7 @@ static esp_err_t health_get(httpd_req_t *req)
         cam.ready ? "ready" : "error",
         touch.ready ? "ready" : "error",
         imu.ready ? "ready" : "error",
-        heap_free, heap_min, psram_free, auth_is_enabled() ? "true" : "false");
+        heap_free, heap_min, psram_free, camera_runtime.enabled ? "true" : "false", auth_is_enabled() ? "true" : "false");
 
     if (n < 0 || n >= (int)sizeof(json)) {
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "health overflow");
