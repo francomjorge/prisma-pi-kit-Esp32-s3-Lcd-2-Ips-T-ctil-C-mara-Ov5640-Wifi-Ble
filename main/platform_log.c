@@ -11,6 +11,48 @@ static size_t s_count;
 static size_t s_head;
 static uint32_t s_total;
 static SemaphoreHandle_t s_mutex;
+/* Runtime-only log filter. This covers application events, not hardware
+ * panic records or unconditional ESP-IDF console output. */
+static platform_log_mode_t s_mode = PLATFORM_LOG_INFO;
+static const char * const s_mode_names[] = {"OFF","ERROR","INFO","DEBUG"};
+static uint32_t s_filtered;
+
+platform_log_mode_t platform_log_mode_get(void)
+{
+    return s_mode;
+}
+
+const char *platform_log_mode_name(void)
+{
+    return s_mode_names[s_mode];
+}
+
+uint32_t platform_log_filtered_count(void)
+{
+    return s_filtered;
+}
+
+esp_err_t platform_log_mode_set(platform_log_mode_t mode)
+{
+    if (mode < PLATFORM_LOG_OFF || mode > PLATFORM_LOG_DEBUG)
+        return ESP_ERR_INVALID_ARG;
+    if (!s_mutex) return ESP_ERR_INVALID_STATE;
+    if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(100)) != pdTRUE)
+        return ESP_ERR_TIMEOUT;
+    s_mode = mode;
+    xSemaphoreGive(s_mutex);
+    return ESP_OK;
+}
+
+static bool retained_at_mode(const char *level, platform_log_mode_t mode)
+{
+    if (mode == PLATFORM_LOG_OFF) return false;
+    if (mode == PLATFORM_LOG_DEBUG) return true;
+    if (level && (!strcmp(level,"ERROR") || !strcmp(level,"FATAL"))) return true;
+    if (mode == PLATFORM_LOG_ERROR) return false;
+    return !level || strcmp(level,"DEBUG") != 0;
+}
+
 
 esp_err_t platform_log_start(void)
 {
@@ -23,6 +65,11 @@ void platform_log_event(const char *level, const char *subsystem, const char *me
 {
     if (!s_mutex) return;
     if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(25)) != pdTRUE) return;
+    if (!retained_at_mode(level, s_mode)) {
+        ++s_filtered;
+        xSemaphoreGive(s_mutex);
+        return;
+    }
 
     platform_event_t *event = &s_events[s_head];
     memset(event, 0, sizeof(*event));
