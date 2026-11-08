@@ -1,3 +1,115 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PRISMA-PI CAMERA SYNTH · Camera Synth</title><link rel="stylesheet" href="/shared.css"></head><body><header class="site-header"><div><a class="brand" href="/">PRISMA<span class="dashp">-PI</span></a><span class="product-tag">CAMERA SYNTH</span></div><nav class="topnav"><a href="/">PRODUCT</a><a class="active" href="/camera-synth">CAMERA SYNTH</a><a href="/admin">ADMIN</a></nav></header><main class="shell"><section style="padding:42px 0 8px"><div class="eyebrow">OPERATIONAL SURFACE</div><h1 style="font-family:Arial,sans-serif;font-size:clamp(38px,7vw,68px);letter-spacing:.08em;margin:0">CAMERA SYNTH</h1><p style="color:var(--muted);max-width:760px;line-height:1.65">Interfaz operativa del instrumento visual. CS002 deja completa la navegación y el discovery por nombre; la OV5640 sigue deliberadamente sin inicializar.</p></section><div class="tabs" id="tabs"></div><section class="workarea" id="panel"></section></main><footer class="footer"><div class="shell"><span>VUDUM DEVELOPMENTS · PRISMA-PI CAMERA SYNTH · CS002</span><a href="/admin">ADMIN</a></div></footer><script>
-const areas={LIVE:{title:'LIVE',text:'La cámara no está inicializada todavía. Este espacio recibirá la imagen en vivo, resolución, FPS real, REC/STREAM y snapshot.',items:['Live image','Resolution / FPS','REC state','Stream state','Snapshot']},CAMERA:{title:'CAMERA',text:'Controles fotográficos de la OV5640. Se habilitan después de la etapa dedicada de detección y captura.',items:['Resolution','JPEG quality','Exposure / AEC','Gain / AGC','AWB / white balance','Brightness / contrast / saturation','Sharpness / denoise','Mirror / vertical flip']},VIDEO:{title:'VIDEO',text:'Configuración del pipeline posterior a una captura estable.',items:['Source resolution','Output resolution','Frame pacing','Crop / scale','Orientation','Local preview policy']},STREAM:{title:'STREAM',text:'Servidor y métricas de streaming llegarán después del snapshot estable.',items:['Enable / disable','URL','Actual FPS','Bitrate','Viewers','Dropped frames','Latency / frame age']},RECORD:{title:'RECORD',text:'Grabación condicionada a un backend de almacenamiento validado.',items:['REC / STOP','Clips','Loops','Duration','Storage target','SOURCE / DEVICE / PROGRAM']},PROCESS:{title:'PROCESS',text:'Procesamiento visual después de estabilizar captura y stream.',items:['8-bit / posterize','Glitch','Chroma key','Pixel / color FX','Crop / face region']},OVERLAYS:{title:'OVERLAYS',text:'Capa futura para texto, imágenes, máscaras y cajas.',items:['Text','Images','Masks','Face boxes','Alpha','Position / scale']},PRESETS:{title:'PRESETS',text:'Persistencia de configuraciones operativas.',items:['Save','Load','Default','Export','Import']},OUTPUT:{title:'OUTPUT',text:'Destinos del pipeline; sólo se activarán salidas realmente validadas.',items:['Web','LCD','Network video','External display / future']}};let current='LIVE';const tabs=document.querySelector('#tabs'),panel=document.querySelector('#panel');function draw(){[...tabs.children].forEach(b=>b.classList.toggle('active',b.textContent===current));const a=areas[current];panel.innerHTML='<div class="empty-state"><div class="mini-mark">PRISMA<span>-PI</span> CAMERA SYNTH</div><h2>'+a.title+'</h2><span class="status-pill off">NOT CONFIGURED · CS002</span><p>'+a.text+'</p><div class="grid" style="width:min(760px,100%);text-align:left">'+a.items.map(x=>'<div class="card planned"><span class="label">'+x+'</span><strong>PLANNED</strong></div>').join('')+'</div></div>'}Object.keys(areas).forEach(k=>{const b=document.createElement('button');b.textContent=k;b.onclick=()=>{current=k;draw()};tabs.appendChild(b)});draw();
-</script></body></html>
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PRISMA-PI CAMERA SYNTH · Photo</title>
+<link rel="stylesheet" href="/shared.css">
+<style>
+.camera-actions{display:flex;gap:12px;flex-wrap:wrap;margin:18px 0}
+.camera-actions button,.camera-actions a{min-height:46px;padding:12px 17px;border-radius:8px;border:1px solid #476a86;background:#10223b;color:#f1f5f8;font-weight:800;cursor:pointer}
+.camera-actions button:disabled{opacity:.35;cursor:not-allowed}
+.camera-preview{min-height:220px;max-width:760px;display:grid;place-items:center;background:#090f1a;border:1px solid #263e52;border-radius:10px;overflow:hidden}
+.camera-preview img{max-width:100%;max-height:550px;object-fit:contain}
+.camera-meta{display:flex;flex-wrap:wrap;gap:16px;font-size:13px;color:var(--muted);margin:16px 0}
+.camera-alert{min-height:22px;font-size:14px;margin:14px 0;color:#86d6dd}
+.camera-alert.error{color:#ff9f99}
+</style>
+</head>
+<body>
+<header class="site-header"><div><a class="brand" href="/">PRISMA<span class="dashp">-PI</span></a><span class="product-tag">CAMERA SYNTH</span></div><nav class="topnav"><a href="/">PRODUCT</a><a class="active" href="/camera-synth">CAMERA SYNTH</a><a href="/admin">ADMIN</a></nav></header>
+<main class="shell">
+<section style="padding:35px 0 8px"><div class="eyebrow">MANUAL CAPTURE · CS011B</div><h1>CAMERA SYNTH</h1><p>La cámara no graba ni transmite automáticamente. El estado y los comandos provienen del mismo ESP32 que controla la pantalla táctil.</p></section>
+<div class="tabs" id="tabs"></div><section class="workarea" id="panel"></section>
+</main>
+<footer class="footer"><div class="shell"><span>VUDUM DEVELOPMENTS · PRISMA-PI CAMERA SYNTH</span><a href="/admin#DIAGNOSTICS">LOGS / DIAGNOSTICS</a></div></footer>
+<script>
+const planned={
+ CAMERA:['Resolution','JPEG quality','Exposure','Gain','White balance','Mirror / flip'],
+ VIDEO:['Frame pacing','Pipeline','Crop','Scale','LCD preview'],
+ STREAM:['Live MJPEG','Enable / disable','FPS','Viewers','Latency'],
+ RECORD:['Video recording','Loop recording','Storage target'],
+ PROCESS:['Posterize','Color','Glitch','Chroma'],
+ OVERLAYS:['Image','Text','Masks','Alpha'],
+ PRESETS:['Save','Load','Export','Import'],
+ OUTPUT:['Browser','LCD preview','PRISMA nodes']
+};
+let current='LIVE', cameraState=null, photoUrl=null, loading=false;
+const tabs=document.querySelector('#tabs'),panel=document.querySelector('#panel');
+const escapeHtml=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function request(url,options={}){
+ const response=await fetch(url,{cache:'no-store',...options});
+ if(!response.ok)throw Error((await response.text())||('HTTP '+response.status));
+ return response;
+}
+function message(text,error=false){const node=document.querySelector('#cameraAlert');if(node){node.textContent=text;node.classList.toggle('error',error)}}
+function showState(){
+ const label=document.querySelector('#cameraState'),meta=document.querySelector('#cameraMeta');
+ if(!label||!cameraState)return;
+ label.textContent=cameraState.enabled?'READY · CAMERA ON':cameraState.supported?'OFF · MEMORY RELEASED':'CAMERA NOT DETECTED';
+ meta.textContent='Photos '+cameraState.capture_count+' · Errors '+cameraState.failures+
+  ' · Last '+cameraState.last_jpeg_bytes+' bytes / '+cameraState.last_capture_ms+
+  ' ms · PSRAM free '+Math.round(cameraState.psram_free_bytes/1024)+' KiB';
+ const on=document.querySelector('#cameraOn'),take=document.querySelector('#takePhoto'),off=document.querySelector('#cameraOff');
+ on.disabled=loading||!cameraState.supported||cameraState.enabled;
+ take.disabled=loading||!cameraState.enabled;
+ off.disabled=loading||!cameraState.enabled;
+}
+async function readCamera(){
+ try{cameraState=await(await request('/api/v1/camera/runtime')).json();showState()}
+ catch(e){message('No se pudo consultar el hardware: '+e.message,true)}
+}
+function releasePhoto(){
+ if(photoUrl){URL.revokeObjectURL(photoUrl);photoUrl=null}
+ const img=document.querySelector('#photo');if(img){img.hidden=true;img.removeAttribute('src')}
+ const download=document.querySelector('#photoDownload');if(download){download.hidden=true;download.removeAttribute('href')}
+}
+async function setCamera(on){
+ if(loading)return;loading=true;showState();
+ try{
+  cameraState=await(await request('/api/v1/camera/'+(on?'enable':'disable'),{method:'POST',headers:{'X-PRISMA-Action':'1'}})).json();
+  if(!on)releasePhoto();
+  message(on?'Cámara habilitada. No captura hasta que presiones TAKE PHOTO.':'Cámara apagada. Buffers liberados.');
+ }catch(e){message('Cambio rechazado: '+e.message,true)}
+ finally{loading=false;await readCamera()}
+}
+async function takePhoto(){
+ if(loading||!cameraState?.enabled)return;
+ loading=true;showState();
+ try{
+  const response=await request('/api/v1/camera/snapshot.jpg');
+  const blob=await response.blob();
+  if(blob.type!=='image/jpeg'||!blob.size)throw Error('No llegó un JPEG válido');
+  releasePhoto();photoUrl=URL.createObjectURL(blob);
+  const img=document.querySelector('#photo'),download=document.querySelector('#photoDownload');
+  img.src=photoUrl;img.hidden=false;download.href=photoUrl;download.download='prisma-photo.jpg';download.hidden=false;
+  message('Fotografía capturada. El framebuffer del ESP32 fue devuelto al driver.');
+ }catch(e){message('No se pudo sacar la foto: '+e.message,true)}
+ finally{loading=false;await readCamera()}
+}
+function draw(){
+ [...tabs.children].forEach(t=>t.classList.toggle('active',t.textContent===current));
+ if(current==='LIVE'){
+  panel.innerHTML='<h2>MANUAL PHOTO / LIVE</h2><p id="cameraState">Consultando cámara…</p>'+
+  '<div class="camera-actions"><button id="cameraOn" type="button">CAMERA ON</button><button id="takePhoto" type="button">TAKE PHOTO</button><button id="cameraOff" type="button">CAMERA OFF</button><a href="/admin#FILES">OPEN SAVED PHOTOS</a><a href="/admin#DIAGNOSTICS">LOGS</a></div>'+
+  '<p id="cameraAlert" class="camera-alert" role="status"></p>'+
+  '<div class="camera-preview"><p id="noPhoto">No hay fotografía solicitada.</p><img id="photo" alt="Fotografía capturada con OV5640" hidden></div>'+
+  '<div class="camera-actions"><a id="photoDownload" download="prisma-photo.jpg" hidden>DOWNLOAD PHOTO</a></div>'+
+  '<div class="camera-meta" id="cameraMeta"></div><p>TAKE PHOTO realiza una única captura JPEG. No inicia streaming, grabación, tareas periódicas ni preview LCD. CAMERA OFF desinicializa el driver para liberar recursos.</p>';
+  document.querySelector('#cameraOn').onclick=()=>setCamera(true);
+  document.querySelector('#cameraOff').onclick=()=>setCamera(false);
+  document.querySelector('#takePhoto').onclick=takePhoto;
+  readCamera();
+ }else{
+  releasePhoto();
+  panel.innerHTML='<div class="empty-state"><h2>'+escapeHtml(current)+'</h2><span class="status-pill off">PLANNED</span>'+
+  '<p>Este módulo todavía no está habilitado; no se inicia ningún servicio al abrirlo.</p>'+
+  '<div class="grid">'+planned[current].map(x=>'<div class="card planned"><span class="label">'+escapeHtml(x)+'</span><strong>INACTIVE</strong></div>').join('')+'</div></div>';
+ }
+}
+['LIVE',...Object.keys(planned)].forEach(name=>{const tab=document.createElement('button');tab.type='button';tab.textContent=name;tab.onclick=()=>{current=name;draw()};tabs.appendChild(tab)});
+draw();
+setInterval(()=>{if(current==='LIVE'&&!document.hidden&&!loading)readCamera()},5000);
+window.addEventListener('beforeunload',releasePhoto);
+</script>
+</body>
+</html>
