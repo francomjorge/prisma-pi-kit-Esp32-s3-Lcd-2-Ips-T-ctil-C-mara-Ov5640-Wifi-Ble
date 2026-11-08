@@ -166,6 +166,46 @@ static esp_err_t logs_get(httpd_req_t *req)
     return e;
 }
 
+static esp_err_t logs_config_get(httpd_req_t *req)
+{
+    char response[180];
+    int n = snprintf(response,sizeof(response),
+        "{\"schema\":\"prisma.logs.v1\",\"mode\":\"%s\",\"filtered\":%" PRIu32 ",\"retained_total\":%" PRIu32 "}",
+        platform_log_mode_name(),platform_log_filtered_count(),platform_log_total_events());
+    if(n<0 || n>=(int)sizeof(response))
+        return httpd_resp_send_err(req,HTTPD_500_INTERNAL_SERVER_ERROR,"logs config overflow");
+    httpd_resp_set_type(req,"application/json");
+    httpd_resp_set_hdr(req,"Cache-Control","no-store");
+    return httpd_resp_send(req,response,n);
+}
+
+static esp_err_t logs_config_post(httpd_req_t *req)
+{
+    char *body=NULL;
+    if(read_json_body(req,&body)!=ESP_OK)
+        return httpd_resp_send_err(req,HTTPD_400_BAD_REQUEST,"JSON required");
+    cJSON *root=cJSON_Parse(body);
+    free(body);
+    if(!root) return httpd_resp_send_err(req,HTTPD_400_BAD_REQUEST,"invalid JSON");
+    cJSON *v=cJSON_GetObjectItemCaseSensitive(root,"mode");
+    platform_log_mode_t mode=PLATFORM_LOG_INFO;
+    bool valid=cJSON_IsString(v)&&v->valuestring;
+    if(valid){
+        if(!strcmp(v->valuestring,"OFF"))mode=PLATFORM_LOG_OFF;
+        else if(!strcmp(v->valuestring,"ERROR"))mode=PLATFORM_LOG_ERROR;
+        else if(!strcmp(v->valuestring,"INFO"))mode=PLATFORM_LOG_INFO;
+        else if(!strcmp(v->valuestring,"DEBUG"))mode=PLATFORM_LOG_DEBUG;
+        else valid=false;
+    }
+    cJSON_Delete(root);
+    if(!valid)
+        return httpd_resp_send_err(req,HTTPD_400_BAD_REQUEST,"mode must be OFF, ERROR, INFO or DEBUG");
+    esp_err_t e=platform_log_mode_set(mode);
+    if(e!=ESP_OK)
+        return httpd_resp_send_err(req,HTTPD_500_INTERNAL_SERVER_ERROR,esp_err_to_name(e));
+    return logs_config_get(req);
+}
+
 static esp_err_t config_export_get(httpd_req_t *req)
 {
     prisma_settings_t cfg = {0};
@@ -293,6 +333,8 @@ esp_err_t platform_web_register(void *server_handle)
     const httpd_uri_t routes[] = {
         {.uri="/api/v1/health", .method=HTTP_GET, .handler=health_get},
         {.uri="/api/v1/logs", .method=HTTP_GET, .handler=logs_get},
+        {.uri="/api/v1/logs/config", .method=HTTP_GET, .handler=logs_config_get},
+        {.uri="/api/v1/logs/config", .method=HTTP_POST, .handler=logs_config_post},
         {.uri="/api/v1/config/export", .method=HTTP_GET, .handler=config_export_get},
         {.uri="/api/v1/config/import", .method=HTTP_POST, .handler=config_import_post},
         {.uri="/api/v1/config/factory-reset", .method=HTTP_POST, .handler=factory_reset_post}
