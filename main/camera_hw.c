@@ -1,5 +1,8 @@
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "esp_camera.h"
@@ -146,6 +149,84 @@ esp_err_t camera_hw_probe(void)
     ESP_LOGI(TAG, "OV5640 probe OK sensor=%s PID=%04X; camera OFF, PSRAM released",
              s_state.sensor_name, s_state.pid);
     return ESP_OK;
+}
+
+void camera_runtime_get_state(camera_runtime_state_t *out)
+{
+    if (!out) return;
+    memset(out,0,sizeof(*out));
+    if (!s_lock || xSemaphoreTake(s_lock,pdMS_TO_TICKS(100))!=pdTRUE) return;
+    out->supported=s_state.ready&&s_state.expected;
+    out->enabled=s_driver_active;
+    out->captured=s_capture_count;
+    out->failed=s_capture_failures;
+    out->last_jpeg_bytes=s_last_jpeg_bytes;
+    out->last_capture_ms=s_last_capture_ms;
+    xSemaphoreGive(s_lock);
+}
+
+esp_err_t camera_hw_set_enabled(bool enabled)
+{
+    if (!s_lock || xSemaphoreTake(s_lock,pdMS_TO_TICKS(250))!=pdTRUE)
+        return ESP_ERR_TIMEOUT;
+    esp_err_t e=enabled?start_driver_locked():stop_driver_locked();
+    xSemaphoreGive(s_lock);
+    return e;
+}
+
+esp_err_t camera_hw_capture_to_storage(char *output_name,size_t capacity)
+{
+    if (output_name && capacity) output_name[0]=0;
+    if (!output_name || capacity<32) return ESP_ERR_INVALID_ARG;
+    if (!s_lock || xSemaphoreTake(s_lock,pdMS_TO_TICKS(250))!=pdTRUE)
+        return ESP_ERR_TIMEOUT;
+    if (!s_driver_active) {xSemaphoreGive(s_lock);return ESP_ERR_INVALID_STATE;}
+    const char *root=storage_volume_root("internal");
+    if (!root || !storage_lock(1500)) {
+        xSemaphoreGive(s_lock);
+        return ESP_ERR_NOT_FOUND;
+    }
+    uint64_t t0=(uint64_t)esp_timer_get_time();
+    camera_fb_t *fb=esp_camera_fb_get();
+    esp_err_t result=ESP_OK;
+    if (!fb || !fb->buf || fb->format!=PIXFORMAT_JPEG || !fb->len) {
+        result=ESP_FAIL;
+    } else {
+        char folder[128],path[170],name[36];
+        strlcpy(folder,root,sizeof(folder));
+        strlcat(folder,"/snapshots",sizeof(folder));
+        if(mkdir(folder,0755)!=0 && errno!=EEXIST) result=ESP_FAIL;
+        snprintf(name,sizeof(name),"shot_%010lu.jpg",
+                 (unsigned long)(s_capture_count+1U));
+        strlcpy(path,folder,sizeof(path));
+        strlcat(path,"/",sizeof(path));
+        strlcat(path,name,sizeof(path));
+        if(result==ESP_OK){
+            FILE *file=fopen(path,"wb");
+            if(!file) result=ESP_FAIL;
+            else {
+                size_t written=fwrite(fb->buf,1,fb->len,file);
+                if(written!=fb->len || fflush(file)!=0) result=ESP_FAIL;
+                if(fclose(file)!=0) result=ESP_FAIL;
+                if(result!=ESP_OK) unlink(path);
+            }
+            if(result==ESP_OK){
+                ++s_capture_count;
+                s_last_jpeg_bytes=(uint32_t)fb->len;
+                s_last_capture_ms=(uint32_t)(((uint64_t)esp_timer_get_time()-t0)/1000U);
+                strlcpy(output_name,"/snapshots/",capacity);
+                strlcat(output_name,name,capacity);
+            }
+        }
+    }
+    if(fb)esp_camera_fb_return(fb);
+    if(result!=ESP_OK)++s_capture_failures;
+    storage_unlock();
+    xSemaphoreGive(s_lock);
+    platform_log_event(result==ESP_OK?"INFO":"ERROR","camera",
+        result==ESP_OK?"LCD manual photo saved to internal storage":
+                       "LCD manual photo failed");
+    return result;
 }
 
 static esp_err_t runtime_state_get(httpd_req_t *req)
