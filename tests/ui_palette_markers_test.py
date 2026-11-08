@@ -29,18 +29,20 @@ assert '#define LCD_H 320' in s and '#define LCD_W 240' in s
 # Hidden gate has no main-carousel dots.
 assert "page_marks(" not in s
 assert "settings_dots(" in s
-assert '#define SETTINGS_COUNT 5' in s
+assert '#define SETTINGS_COUNT 6' in s
 assert 'settings_dots(page)' in s
 gate = function_body("render_gate")
 assert 'centered_button(132,48,"CONFIG")' in gate
 assert 'centered_button(210,48,"BACK TO PRISMA")' in gate
 assert "settings_dots(" not in gate
 admin = function_body("render_settings")
-for label in ("DEVICE","NETWORK","STORAGE","SECURITY","SYSTEM"):
+for label in ("DEVICE","NETWORK","STORAGE","SECURITY","SYSTEM","CAMERA"):
     assert f'"{label}"' in admin
 assert 'settings_footer(page)' in admin
 assert 'RESET NETWORK' in admin and 'RESET ADMIN PASS' in admin
 assert 'BACK TO PRISMA' in function_body('settings_footer')
+assert 'CAMERA ON' in s and 'TAKE PHOTO' in s and 'CAMERA OFF' in s
+assert 'camera_hw_set_enabled(' in s and 'camera_hw_capture_to_storage(' in s
 assert 'CONFIRM REQUIRED' in function_body('render_confirm')
 assert "UNIQUE HOSTNAME" in s and "MDNS ADDRESS" in s and "DIRECT AP ADDRESS" in s
 assert "char host_lcd[40]" in s
