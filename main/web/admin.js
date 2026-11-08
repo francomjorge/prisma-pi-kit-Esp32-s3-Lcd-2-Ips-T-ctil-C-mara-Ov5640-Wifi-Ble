@@ -11,6 +11,7 @@ window.fetch = (url, options = {}) => {
 const SECTIONS=['OVERVIEW','DEVICE','NETWORK','STORAGE','FILES','DISPLAY','TOUCH','SENSORS','CAMERA HW','POWER','CONNECTIVITY','AUDIO','SECURITY','SYSTEM','DIAGNOSTICS','UPDATE','ABOUT'];
 let state=null,config=null,health=null,logs=null,security=null,latestCheck=null,current='OVERVIEW';
 const pane={internal:{path:'/',entries:[],selected:null},sd:{path:'/',entries:[],selected:null}};
+if(new URLSearchParams(location.search).get('photo_folder')==='1')pane.internal.path='/photos';
 const nav=document.querySelector('#sections'),body=document.querySelector('#body'),title=document.querySelector('#title'),intro=document.querySelector('#intro'),message=document.querySelector('#message');
 const $=s=>document.querySelector(s);const esc=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function bytes(n){n=Number(n)||0;if(n<1024)return n+' B';const u=['KB','MB','GB','TB'];let i=-1;do{n/=1024;i++}while(n>=1024&&i<u.length-1);return n.toFixed(n>=100?0:n>=10?1:2)+' '+u[i]}
