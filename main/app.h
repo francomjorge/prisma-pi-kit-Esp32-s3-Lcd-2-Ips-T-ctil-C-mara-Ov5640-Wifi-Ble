@@ -179,8 +179,11 @@ void discovery_get_state(discovery_state_t *out);
 typedef struct {
     bool supported,enabled;
     uint32_t photos,errors,last_bytes,last_ms;
+    uint8_t size_index,quality_index,jpeg_quality;
+    uint16_t width,height;
 } photo_state_t;
 void photo_state_get(photo_state_t *out);
+esp_err_t photo_set_options(uint8_t size_index,uint8_t quality_index);
 esp_err_t photo_power(bool on);
 esp_err_t photo_take(httpd_req_t *request,char *saved,size_t cap);
 esp_err_t photo_web_register(httpd_handle_t server);
