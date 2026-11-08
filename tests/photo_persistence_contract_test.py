@@ -20,6 +20,6 @@ assert "X-PRISMA-Photo-Path" in h
 assert "photo_folder=1#FILES" in h
 assert "URL.revokeObjectURL" in h
 assert "photo_folder" in admin and "pane.internal.path='/photos'" in admin
-assert "SAVED %s" in d and "ERROR 0x%X" in d
+assert "SAVED %.22s" in d and "ERROR 0x%X" in d
 assert "s_last_photo_tap_ms" in d
 print("PASS CS011S: shared persistent JPEGs; gallery, deep link, release and LCD feedback")
