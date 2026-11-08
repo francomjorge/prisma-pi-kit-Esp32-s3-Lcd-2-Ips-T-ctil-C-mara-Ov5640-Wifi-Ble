@@ -76,7 +76,7 @@ async function takePhoto(){
  if(loading||!cameraState?.enabled)return;
  loading=true;showState();
  try{
-  const response=await request('/api/v1/camera/snapshot.jpg');
+  const response=await request('/api/v1/camera/snapshot',{method:'POST',headers:{'X-PRISMA-Action':'1'}});
   const blob=await response.blob();
   if(blob.type!=='image/jpeg'||!blob.size)throw Error('No llegó un JPEG válido');
   releasePhoto();photoUrl=URL.createObjectURL(blob);
