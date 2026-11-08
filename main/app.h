@@ -161,6 +161,17 @@ esp_err_t network_retry_sta(void);
 esp_err_t discovery_start(void);
 void discovery_get_state(discovery_state_t *out);
 
+typedef struct {
+    bool supported;
+    bool enabled;
+    uint32_t captured;
+    uint32_t failed;
+    uint32_t last_jpeg_bytes;
+    uint32_t last_capture_ms;
+} camera_runtime_state_t;
+void camera_runtime_get_state(camera_runtime_state_t *out);
+esp_err_t camera_hw_set_enabled(bool enabled);
+esp_err_t camera_hw_capture_to_storage(char *name,size_t capacity);
 esp_err_t camera_web_register(httpd_handle_t server);
 esp_err_t camera_hw_probe(void);
 void camera_hw_get_state(camera_hw_state_t *out);
