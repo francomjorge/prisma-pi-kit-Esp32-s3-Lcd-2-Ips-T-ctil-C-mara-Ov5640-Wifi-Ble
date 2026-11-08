@@ -1,7 +1,7 @@
-name: Build Camera Synth CS010Y
+name: Build Camera Synth CS010Z
 on:
   push:
-    branches: [main, cs010-network-resilience, cs010r-admin-touch-recovery, cs010s-web-crash-hardening, cs010t-legacy-glitch-state, cs010u-black-palette-pagemarkers, cs010v-two-page-config-home, cs010w-original-system-gate, cs010x-factory-device-swipe, cs010y-device-readable-mdns]
+    branches: [main, cs010-network-resilience, cs010r-admin-touch-recovery, cs010s-web-crash-hardening, cs010t-legacy-glitch-state, cs010u-black-palette-pagemarkers, cs010v-two-page-config-home, cs010w-original-system-gate, cs010x-factory-device-swipe, cs010y-device-readable-mdns, cs010z-touch-gesture-stabilization]
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,6 +19,8 @@ jobs:
           gcc -std=c11 -Wall -Wextra -Werror -pedantic -Imain tests/ui_legacy_state_test.c -o /tmp/prisma_legacy_ui_test
           /tmp/prisma_legacy_ui_test
           python3 tests/ui_palette_markers_test.py
+          gcc -std=c11 -Wall -Wextra -Werror -pedantic -Imain tests/touch_gesture_test.c -o /tmp/prisma_touch_gesture_test
+          /tmp/prisma_touch_gesture_test
           python3 - <<'PY'
           from pathlib import Path
           import re, subprocess, tempfile
@@ -37,7 +39,7 @@ jobs:
     container: espressif/idf:v5.3.2
     steps:
       - uses: actions/checkout@v4
-      - name: Compile CS010Y
+      - name: Compile CS010Z
         id: compile
         shell: bash
         run: |
@@ -47,22 +49,22 @@ jobs:
           status=${PIPESTATUS[0]}
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit 0
-      - name: Package CS010Y
+      - name: Package CS010Z
         if: steps.compile.outputs.status == '0'
         shell: bash
         run: |
           . /opt/esp/idf/export.sh
           cd build
-          python -m esptool --chip esp32s3 merge_bin -o PRISMA-PI-CAMERA-SYNTH-CS010Y-factory.bin @flash_args
-          sha256sum PRISMA-PI-CAMERA-SYNTH-CS010Y-factory.bin prisma_camera_synth.bin > SHA256SUMS.txt
-      - name: Upload CS010Y artifacts and diagnostic log
+          python -m esptool --chip esp32s3 merge_bin -o PRISMA-PI-CAMERA-SYNTH-CS010Z-factory.bin @flash_args
+          sha256sum PRISMA-PI-CAMERA-SYNTH-CS010Z-factory.bin prisma_camera_synth.bin > SHA256SUMS.txt
+      - name: Upload CS010Z artifacts and diagnostic log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: PRISMA-PI-CAMERA-SYNTH-CS010Y-${{ github.run_number }}
+          name: PRISMA-PI-CAMERA-SYNTH-CS010Z-${{ github.run_number }}
           path: |
             build.log
-            build/PRISMA-PI-CAMERA-SYNTH-CS010Y-factory.bin
+            build/PRISMA-PI-CAMERA-SYNTH-CS010Z-factory.bin
             build/prisma_camera_synth.bin
             build/SHA256SUMS.txt
             build/flasher_args.json
