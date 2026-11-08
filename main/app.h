@@ -161,6 +161,14 @@ esp_err_t network_retry_sta(void);
 esp_err_t discovery_start(void);
 void discovery_get_state(discovery_state_t *out);
 
+typedef struct {
+    bool supported,enabled;
+    uint32_t photos,errors,last_bytes,last_ms;
+} photo_state_t;
+void photo_state_get(photo_state_t *out);
+esp_err_t photo_power(bool on);
+esp_err_t photo_take(httpd_req_t *request,char *saved,size_t cap);
+esp_err_t photo_web_register(httpd_handle_t server);
 esp_err_t camera_hw_probe(void);
 void camera_hw_get_state(camera_hw_state_t *out);
 
