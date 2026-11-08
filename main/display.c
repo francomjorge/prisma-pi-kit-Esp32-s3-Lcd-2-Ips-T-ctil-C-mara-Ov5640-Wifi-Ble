@@ -353,7 +353,7 @@ static void display_task(void *unused)
                     char saved[48]={0};
                     result=photo_take(NULL,saved,sizeof(saved));
                     if(result==ESP_OK){
-                        snprintf(s_photo_message,sizeof(s_photo_message),"SAVED %s",saved+8);
+                        snprintf(s_photo_message,sizeof(s_photo_message),"SAVED %.22s",saved+8);
                     }else{
                         snprintf(s_photo_message,sizeof(s_photo_message),"ERROR 0x%X",(unsigned)result);
                     }
