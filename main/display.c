@@ -262,7 +262,9 @@ static void render_settings(int page)
         centered_text(115,b,2,wh);
         snprintf(b,sizeof(b),"HEAP %u KB",(unsigned)(esp_get_free_heap_size()/1024U));
         centered_text(151,b,2,wh);
-        centered_text(190,"ADMIN SERVICES",2,cy);
+        /* Same runtime log mode used by Web ADMIN / DIAGNOSTICS. */
+        snprintf(b,sizeof(b),"LOGS %s",platform_log_mode_name());
+        centered_button(197,35,b);
     }
     settings_footer(page);
 }
@@ -336,6 +338,12 @@ static void display_task(void *unused)
                     confirm=LCD_CONFIRM_NETWORK;nav=LCD_NAV_CONFIRM;last_result[0]=0;redraw=true;
                 }else if(ty>=190&&ty<240&&settings_page==3){
                     confirm=LCD_CONFIRM_ADMIN;nav=LCD_NAV_CONFIRM;last_result[0]=0;redraw=true;
+                }else if(ty>=190&&ty<240&&settings_page==4){
+                    /* Physical button cycles the SAME state reflected in Web. */
+                    platform_log_mode_t current=platform_log_mode_get();
+                    platform_log_mode_t next=(platform_log_mode_t)
+                        ((current + 1U) % (PLATFORM_LOG_DEBUG + 1U));
+                    if(platform_log_mode_set(next)==ESP_OK)redraw=true;
                 }
             }
         }else if(nav==LCD_NAV_CONFIRM&&action==UI_EVENT_TAP){
