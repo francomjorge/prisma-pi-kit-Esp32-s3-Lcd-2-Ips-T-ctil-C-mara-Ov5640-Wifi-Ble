@@ -30,8 +30,8 @@ esp_err_t camera_hw_probe(void)
     if(!s_lock)return ESP_ERR_NO_MEM;
     s_state.probed = true;
     s_state.xclk_hz = 20000000;
-    s_state.fb_count = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0 ? 2 : 1;
-    strlcpy(s_state.fb_location, s_state.fb_count == 2 ? "PSRAM" : "DRAM", sizeof(s_state.fb_location));
+    s_state.fb_count = 1; /* one-shot photo mode: never queue stale frames */
+    strlcpy(s_state.fb_location, heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0 ? "PSRAM" : "DRAM", sizeof(s_state.fb_location));
     strlcpy(s_state.sensor_name, "NOT DETECTED", sizeof(s_state.sensor_name));
     strlcpy(s_state.error, "initializing", sizeof(s_state.error));
 
@@ -59,7 +59,7 @@ esp_err_t camera_hw_probe(void)
         .frame_size = FRAMESIZE_QVGA,
         .jpeg_quality = 12,
         .fb_count = s_state.fb_count,
-        .fb_location = s_state.fb_count == 2 ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM,
+        .fb_location = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0 ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM,
         .grab_mode = CAMERA_GRAB_WHEN_EMPTY,
         .sccb_i2c_port = -1
     };
@@ -124,7 +124,7 @@ static camera_config_t default_camera_config(void)
         .frame_size = FRAMESIZE_QVGA,
         .jpeg_quality = 12,
         .fb_count = s_state.fb_count,
-        .fb_location = s_state.fb_count == 2 ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM,
+        .fb_location = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0 ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM,
         .grab_mode = CAMERA_GRAB_WHEN_EMPTY,
         .sccb_i2c_port = -1
     };
@@ -158,55 +158,74 @@ esp_err_t photo_power(bool on)
     if(e==ESP_OK)platform_log_event("INFO","photo",on?"Camera READY":"Camera OFF buffers released");
     return e;
 }
+
+/* The same JPEG is saved and returned to the Web. Never report success
+ * until the file has been closed and its contents committed. */
+static esp_err_t save_photo(camera_fb_t *fb,char *saved,size_t saved_cap)
+{
+    const char *root=storage_volume_root("internal");
+    if(!root)return ESP_ERR_INVALID_STATE;
+    if(!storage_lock(1500))return ESP_ERR_TIMEOUT;
+    esp_err_t result=ESP_FAIL;
+    char folder[64],path[120],name[32];
+    snprintf(folder,sizeof(folder),"%s/photos",root);
+    if(mkdir(folder,0755)!=0&&errno!=EEXIST)goto done;
+    for(unsigned id=1;id<=1000000U;id++){
+        snprintf(name,sizeof(name),"photo_%06u.jpg",id);
+        snprintf(path,sizeof(path),"%s/%s",folder,name);
+        struct stat existing;
+        if(stat(path,&existing)==0)continue;
+        if(errno!=ENOENT)break;
+        FILE *file=fopen(path,"wb");
+        if(!file)break;
+        const size_t written=fwrite(fb->buf,1,fb->len,file);
+        const int flushed=fflush(file);
+        const int closed=fclose(file);
+        if(written==fb->len&&flushed==0&&closed==0){
+            result=ESP_OK;
+            if(saved&&saved_cap)snprintf(saved,saved_cap,"/photos/%s",name);
+        }else{
+            (void)unlink(path);
+        }
+        break;
+    }
+done:
+    storage_unlock();
+    return result;
+}
+
 esp_err_t photo_take(httpd_req_t *request,char *saved,size_t saved_cap)
 {
     if(saved&&saved_cap)saved[0]=0;
     if(!s_lock||xSemaphoreTake(s_lock,pdMS_TO_TICKS(100))!=pdTRUE)return ESP_ERR_TIMEOUT;
     if(!s_active){xSemaphoreGive(s_lock);return ESP_ERR_INVALID_STATE;}
-    int64_t begun=esp_timer_get_time();
+    const int64_t begun=esp_timer_get_time();
     camera_fb_t *fb=esp_camera_fb_get();
     esp_err_t e=ESP_FAIL;
-    if(fb&&fb->buf&&fb->len&&fb->format==PIXFORMAT_JPEG){
-        if(request){
+    char path[48]={0};
+    if(fb&&fb->buf&&fb->len>0&&fb->format==PIXFORMAT_JPEG){
+        e=save_photo(fb,path,sizeof(path));
+        if(e==ESP_OK&&request){
+            /* Return the exact JPEG that was persisted; do not take a
+             * second frame for the browser preview. */
             httpd_resp_set_type(request,"image/jpeg");
             httpd_resp_set_hdr(request,"Cache-Control","no-store");
+            httpd_resp_set_hdr(request,"X-PRISMA-Photo-Path",path);
             e=httpd_resp_send(request,(const char*)fb->buf,(ssize_t)fb->len);
-        }else{
-            const char *root=storage_volume_root("internal");
-            if(root&&storage_lock(300)){
-                char folder[64],path[120],name[32];
-                snprintf(folder,sizeof(folder),"%s/photos",root);
-                if(mkdir(folder,0755)==0||errno==EEXIST){
-                    for(unsigned id=1;id<=1000000;id++){
-                        snprintf(name,sizeof(name),"photo_%06u.jpg",id);
-                        snprintf(path,sizeof(path),"%s/%s",folder,name);
-                        struct stat st;
-                        if(stat(path,&st)==0)continue;
-                        if(errno!=ENOENT)break;
-                        FILE *f=fopen(path,"wb");
-                        if(!f)break;
-                        size_t n=fwrite(fb->buf,1,fb->len,f);
-                        int flush=fflush(f),closed=fclose(f);
-                        if(n==fb->len&&flush==0&&closed==0){
-                            e=ESP_OK;
-                            if(saved&&saved_cap)snprintf(saved,saved_cap,"/photos/%s",name);
-                        }else unlink(path);
-                        break;
-                    }
-                }
-                storage_unlock();
-            }
         }
         if(e==ESP_OK){
-            s_photos++;s_last_bytes=(unsigned)fb->len;
+            ++s_photos;
+            s_last_bytes=(unsigned)fb->len;
             s_last_ms=(unsigned)((esp_timer_get_time()-begun)/1000);
+            if(saved&&saved_cap)strlcpy(saved,path,saved_cap);
         }
     }
+    /* The capture buffer always returns to the camera driver. */
     if(fb)esp_camera_fb_return(fb);
-    if(e!=ESP_OK)s_errors++;
+    if(e!=ESP_OK)++s_errors;
     xSemaphoreGive(s_lock);
     platform_log_event(e==ESP_OK?"INFO":"ERROR","photo",
-                       e==ESP_OK?"Manual JPEG captured":"Manual JPEG failed");
+                       e==ESP_OK?"JPEG saved in INTERNAL/photos":"Manual capture/save failed");
     return e;
 }
 static esp_err_t photo_status(httpd_req_t *r)
@@ -236,6 +255,7 @@ static esp_err_t photo_capture_http(httpd_req_t *r)
     esp_err_t e=photo_take(r,NULL,0);
     if(e==ESP_ERR_INVALID_STATE)return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,"CAMERA OFF");
     if(e==ESP_ERR_TIMEOUT)return httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,"CAMERA BUSY");
+    if(e==ESP_ERR_INVALID_STATE)return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,"INTERNAL STORAGE NOT READY");
     return e;
 }
 esp_err_t photo_web_register(httpd_handle_t h)
