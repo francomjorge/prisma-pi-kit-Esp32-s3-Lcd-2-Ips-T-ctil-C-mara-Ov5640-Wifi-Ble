@@ -23,7 +23,7 @@
 #define MARKER_Y (LCD_H - 16)
 #define TOUCH_POLL_MS 25
 
-static const char *TAG = "CS012A_LCD";
+static const char *TAG = "CS012B_LCD";
 static uint16_t *frame;
 static uint16_t *stripe[2];
 static esp_lcd_panel_handle_t panel;
@@ -183,18 +183,21 @@ static void render_photo(void)
 {
     const uint16_t wh=rgb(240,245,250),cy=rgb(35,220,220),dim=rgb(75,82,90);
     photo_state_t p={0};photo_state_get(&p);
+    static const char * const sizes[]={"VGA","SVGA","XGA","SXGA","UXGA","QXGA","5MP"};
+    static const char * const qualities[]={"STANDARD","HIGH","MAX"};
     rect(0,0,LCD_W,LCD_H,rgb(4,7,12));
-    centered_text(20,"PHOTO",3,cy);
-    centered_text(65,p.supported?"OV5640 DETECTED":"CAMERA UNAVAILABLE",1,wh);
-    centered_text(87,p.enabled?"CAMERA READY":"CAMERA OFF",2,p.enabled?cy:dim);
-    char b[40];
-    snprintf(b,sizeof(b),"PHOTOS %lu",(unsigned long)p.photos);
-    centered_text(112,b,1,wh);
-    centered_button(140,34,"CAMERA ON");
-    centered_button(184,34,"TAKE PHOTO");
-    centered_button(228,34,"CAMERA OFF");
-    centered_text(273,s_photo_message,1,cy);
-    centered_text(289,"SWIPE RIGHT HOME",1,dim);
+    centered_text(8,"PHOTO",3,cy);
+    centered_text(44,p.enabled?"CAMERA READY":"CAMERA OFF",2,p.enabled?cy:dim);
+    char label[40];
+    snprintf(label,sizeof(label),"SIZE %s",sizes[p.size_index<7?p.size_index:1]);
+    centered_button(73,30,label);
+    snprintf(label,sizeof(label),"JPEG %s",qualities[p.quality_index<3?p.quality_index:1]);
+    centered_button(109,30,label);
+    centered_button(153,32,"CAMERA ON");
+    centered_button(193,32,"TAKE PHOTO");
+    centered_button(233,32,"CAMERA OFF");
+    centered_text(272,s_photo_message,1,cy);
+    centered_text(291,"SWIPE LEFT FILES",1,dim);
     rect(104,304,6,6,dim);
     rect(118,304,6,6,cy);
     rect(132,304,6,6,dim);
@@ -364,7 +367,7 @@ static void render_settings(int page)
         centered_button(197,35,"RESET ADMIN PASS");
     }else{
         centered_text(24,"SYSTEM",3,cy);
-        centered_text(70,"CS012A PLATFORM",2,wh);
+        centered_text(70,"CS012B PLATFORM",2,wh);
         snprintf(b,sizeof(b),"UP %llu SEC",(unsigned long long)(esp_timer_get_time()/1000000ULL));
         centered_text(115,b,2,wh);
         snprintf(b,sizeof(b),"HEAP %u KB",(unsigned)(esp_get_free_heap_size()/1024U));
@@ -432,20 +435,28 @@ static void display_task(void *unused)
             }else if(action==UI_EVENT_TAP && (uint32_t)(now-s_last_photo_tap_ms)>=850U){
                 s_last_photo_tap_ms=now;
                 esp_err_t result=ESP_ERR_INVALID_ARG;
-                if(ty>=135&&ty<179){
+                photo_state_t cfg={0};photo_state_get(&cfg);
+                if(ty>=70&&ty<108){
+                    result=photo_set_options((uint8_t)((cfg.size_index+1U)%7U),cfg.quality_index);
+                    strlcpy(s_photo_message,result==ESP_OK?"SIZE APPLIED":"SIZE FAILED",sizeof(s_photo_message));
+                    redraw=true;
+                }else if(ty>=108&&ty<146){
+                    result=photo_set_options(cfg.size_index,(uint8_t)((cfg.quality_index+1U)%3U));
+                    strlcpy(s_photo_message,result==ESP_OK?"JPEG APPLIED":"JPEG FAILED",sizeof(s_photo_message));
+                    redraw=true;
+                }else if(ty>=148&&ty<189){
                     result=photo_power(true);
                     strlcpy(s_photo_message,result==ESP_OK?"CAMERA READY":"ENABLE FAILED",sizeof(s_photo_message));
                     redraw=true;
-                }else if(ty>=179&&ty<223){
+                }else if(ty>=189&&ty<230){
                     char saved[48]={0};
                     result=photo_take(NULL,saved,sizeof(saved));
-                    if(result==ESP_OK){
+                    if(result==ESP_OK)
                         snprintf(s_photo_message,sizeof(s_photo_message),"SAVED %.22s",saved+8);
-                    }else{
+                    else
                         snprintf(s_photo_message,sizeof(s_photo_message),"ERROR 0x%X",(unsigned)result);
-                    }
                     redraw=true;
-                }else if(ty>=223&&ty<270){
+                }else if(ty>=230&&ty<268){
                     result=photo_power(false);
                     strlcpy(s_photo_message,result==ESP_OK?"CAMERA OFF":"DISABLE FAILED",sizeof(s_photo_message));
                     redraw=true;
