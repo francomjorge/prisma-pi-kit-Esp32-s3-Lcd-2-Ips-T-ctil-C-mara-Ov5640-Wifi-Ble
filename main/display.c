@@ -153,7 +153,7 @@ static void render_home(unsigned phase)
  * two actionable buttons, then five internal settings screens.
  * This is independent of the PRISMA HOME page indicators.
  */
-#define SETTINGS_COUNT 5
+#define SETTINGS_COUNT 6
 #define SETTINGS_DOTS_Y 307
 typedef enum { LCD_NAV_PRISMA=0, LCD_NAV_GATE, LCD_NAV_SETTINGS, LCD_NAV_CONFIRM } lcd_nav_t;
 typedef enum { LCD_CONFIRM_NONE=0, LCD_CONFIRM_NETWORK, LCD_CONFIRM_ADMIN } lcd_confirm_t;
@@ -189,12 +189,14 @@ static void settings_footer(int page)
 {
     const uint16_t dim=rgb(75,82,90);
     static const char * const numbers[SETTINGS_COUNT] = {
-        "1 OF 5", "2 OF 5", "3 OF 5", "4 OF 5", "5 OF 5"
+        "1 OF 6", "2 OF 6", "3 OF 6", "4 OF 6", "5 OF 6", "6 OF 6"
     };
     centered_text(246,numbers[page>=0&&page<SETTINGS_COUNT?page:0],1,dim);
     centered_button(266,30,"BACK TO PRISMA");
     settings_dots(page);
 }
+
+static char s_camera_last_action[32]="READY";
 
 static void render_settings(int page)
 {
@@ -255,7 +257,7 @@ static void render_settings(int page)
         centered_text(132,"PASSWORD",1,dim);
         centered_text(153,auth_is_enabled()?"CONFIGURED":"NOT CONFIGURED",2,wh);
         centered_button(197,35,"RESET ADMIN PASS");
-    }else{
+    }else if(page==4){
         centered_text(24,"SYSTEM",3,cy);
         centered_text(70,"CS010Y PLATFORM",2,wh);
         snprintf(b,sizeof(b),"UP %llu SEC",(unsigned long long)(esp_timer_get_time()/1000000ULL));
@@ -265,6 +267,17 @@ static void render_settings(int page)
         /* Same runtime log mode used by Web ADMIN / DIAGNOSTICS. */
         snprintf(b,sizeof(b),"LOGS %s",platform_log_mode_name());
         centered_button(197,35,b);
+    }else{
+        camera_runtime_state_t cam={0};camera_runtime_get_state(&cam);
+        centered_text(17,"CAMERA",3,cy);
+        centered_text(59,cam.supported?"OV5640 DETECTED":"CAMERA NOT READY",2,wh);
+        centered_text(87,cam.enabled?"DRIVER READY":"DRIVER OFF",2,cam.enabled?cy:dim);
+        snprintf(b,sizeof(b),"PHOTOS %lu",(unsigned long)cam.captured);
+        centered_text(110,b,1,wh);
+        centered_button(128,30,"CAMERA ON");
+        centered_button(166,30,"TAKE PHOTO");
+        centered_button(204,30,"CAMERA OFF");
+        centered_text(238,s_camera_last_action,1,cy);
     }
     settings_footer(page);
 }
@@ -344,6 +357,24 @@ static void display_task(void *unused)
                     platform_log_mode_t next=(platform_log_mode_t)
                         ((current + 1U) % (PLATFORM_LOG_DEBUG + 1U));
                     if(platform_log_mode_set(next)==ESP_OK)redraw=true;
+                }else if(settings_page==5 && ty>=122 && ty<244){
+                    esp_err_t result=ESP_ERR_INVALID_STATE;
+                    if(ty<162){
+                        result=camera_hw_set_enabled(true);
+                        strlcpy(s_camera_last_action,result==ESP_OK?"CAMERA READY":"ENABLE FAILED",sizeof(s_camera_last_action));
+                    }else if(ty<202){
+                        char name[48]={0};
+                        result=camera_hw_capture_to_storage(name,sizeof(name));
+                        strlcpy(s_camera_last_action,
+                                result==ESP_OK?"PHOTO SAVED":"PHOTO FAILED",
+                                sizeof(s_camera_last_action));
+                    }else{
+                        result=camera_hw_set_enabled(false);
+                        strlcpy(s_camera_last_action,
+                                result==ESP_OK?"CAMERA OFF":"DISABLE FAILED",
+                                sizeof(s_camera_last_action));
+                    }
+                    redraw=true;
                 }
             }
         }else if(nav==LCD_NAV_CONFIRM&&action==UI_EVENT_TAP){
