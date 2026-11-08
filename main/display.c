@@ -281,7 +281,7 @@ static void render_settings(int page)
         centered_button(197,35,"RESET ADMIN PASS");
     }else{
         centered_text(24,"SYSTEM",3,cy);
-        centered_text(70,"CS011R PLATFORM",2,wh);
+        centered_text(70,"CS011S PLATFORM",2,wh);
         snprintf(b,sizeof(b),"UP %llu SEC",(unsigned long long)(esp_timer_get_time()/1000000ULL));
         centered_text(115,b,2,wh);
         snprintf(b,sizeof(b),"HEAP %u KB",(unsigned)(esp_get_free_heap_size()/1024U));
