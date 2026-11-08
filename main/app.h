@@ -174,6 +174,18 @@ void touch_hw_last_point(uint16_t *x, uint16_t *y);
 esp_err_t imu_hw_probe(void);
 void imu_hw_get_state(imu_hw_state_t *out);
 
+typedef enum {
+    PLATFORM_LOG_OFF = 0,
+    PLATFORM_LOG_ERROR,
+    PLATFORM_LOG_INFO,
+    PLATFORM_LOG_DEBUG
+} platform_log_mode_t;
+
+platform_log_mode_t platform_log_mode_get(void);
+const char *platform_log_mode_name(void);
+uint32_t platform_log_filtered_count(void);
+esp_err_t platform_log_mode_set(platform_log_mode_t mode);
+
 esp_err_t platform_log_start(void);
 void platform_log_event(const char *level, const char *subsystem, const char *message);
 size_t platform_log_copy(platform_event_t *out, size_t max_events);
