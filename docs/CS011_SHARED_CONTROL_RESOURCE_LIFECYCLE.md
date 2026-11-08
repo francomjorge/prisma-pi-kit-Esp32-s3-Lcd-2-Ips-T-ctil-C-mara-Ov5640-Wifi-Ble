@@ -67,6 +67,17 @@ Current device configuration pages (DEVICE / NETWORK / STORAGE / SECURITY / SYST
 Camera operations live on the operational /camera-synth page with manually triggered screenshot and resource switch. An LCD camera control should be added as a coherent, explicit internal operational item only after user approves the LCD workflow; it must call the same runtime functions.
 Logs are owned by Admin diagnostics; choose mode and read events, with visible actual mode. The LCD view of the mode must be read from the same service; no simulated indicator.
 
+## CS011B implementation candidate (not physically validated)
+- LCD PRISMA main carousel remains unchanged, as does the hidden PRISMA SYSTEM gate.
+- The internal CONFIG set expands to six pages, appending CAMERA after SYSTEM; the existing five pages and Back to Prisma controls remain.
+- LCD CAMERA: CAMERA ON, TAKE PHOTO (writes an internal `/snapshots/shot_XXXXXXXXXX.jpg` JPEG), CAMERA OFF.
+- Web `/camera-synth` LIVE: CAMERA ON, TAKE PHOTO (returns a JPEG only after explicit click), CAMERA OFF; local preview blob is revoked on OFF / leaving LIVE.
+- Admin FILES can browse/download the LCD-generated stills; runtime capture metrics and camera enabled state are device-owned.
+- LCD SYSTEM has a logs level cycle; Web ADMIN DIAGNOSTICS has the same OFF/ERROR/INFO/DEBUG runtime control.
+- STOP means the camera driver calls `esp_camera_deinit` and releases its driver-owned framebuffer(s). The core HTTP/Admin service and boot/panic safeguards remain available.
+- No continuous stream, video recording, postprocessing or camera auto-start exists in this candidate.
+- This implementation is a candidate requiring physical verification on the target board. CS010Y #68 remains the known working fallback.
+
 ## Acceptance gates
 1. Preserve CS010Y stable boot, Wi-Fi AP, mDNS, Admin, LCD gestures and factory recovery.
 2. 100 manual snapshot requests including error/retry; no unreturned framebuffers.
