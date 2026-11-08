@@ -21,6 +21,7 @@ jobs:
           python3 tests/ui_palette_markers_test.py
           python3 tests/log_modes_contract_test.py
           python3 tests/camera_manual_contract_test.py
+          node tests/camera_web_smoke.cjs
           python3 - <<'PY'
           from pathlib import Path
           import re, subprocess, tempfile
