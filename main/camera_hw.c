@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <stdlib.h>
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -17,6 +18,30 @@ static camera_hw_state_t s_state;
 static SemaphoreHandle_t s_lock;
 static bool s_active;
 static unsigned s_photos,s_errors,s_last_bytes,s_last_ms;
+/* Runtime-owned photo settings shared by Web and LCD.
+ * Resolution/quality are deliberately not persisted across a reboot yet. */
+static uint8_t s_size_index=1; /* SVGA stable default */
+static uint8_t s_quality_index=1; /* HIGH = jpeg_quality 8 */
+typedef struct {
+    const char *id;
+    framesize_t frame;
+    uint16_t width,height;
+} photo_size_option_t;
+static const photo_size_option_t s_sizes[]={
+    {"VGA",FRAMESIZE_VGA,640,480},
+    {"SVGA",FRAMESIZE_SVGA,800,600},
+    {"XGA",FRAMESIZE_XGA,1024,768},
+    {"SXGA",FRAMESIZE_SXGA,1280,1024},
+    {"UXGA",FRAMESIZE_UXGA,1600,1200},
+    {"QXGA",FRAMESIZE_QXGA,2048,1536},
+    {"5MP",FRAMESIZE_5MP,2592,1944}
+};
+static const struct {const char *id;int driver_quality;} s_qualities[]={
+    {"STANDARD",12},{"HIGH",8},{"MAX",5}
+};
+#define PHOTO_SIZE_COUNT (sizeof(s_sizes)/sizeof(s_sizes[0]))
+#define PHOTO_QUALITY_COUNT (sizeof(s_qualities)/sizeof(s_qualities[0]))
+
 
 void camera_hw_get_state(camera_hw_state_t *out)
 {
@@ -56,8 +81,8 @@ esp_err_t camera_hw_probe(void)
         .ledc_timer = LEDC_TIMER_0,
         .ledc_channel = LEDC_CHANNEL_0,
         .pixel_format = PIXFORMAT_JPEG,
-        .frame_size = FRAMESIZE_SVGA,
-        .jpeg_quality = 8,
+        .frame_size = s_sizes[s_size_index].frame,
+        .jpeg_quality = s_qualities[s_quality_index].driver_quality,
         .fb_count = s_state.fb_count,
         .fb_location = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0 ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM,
         .grab_mode = CAMERA_GRAB_WHEN_EMPTY,
@@ -121,8 +146,8 @@ static camera_config_t default_camera_config(void)
         .ledc_timer = LEDC_TIMER_0,
         .ledc_channel = LEDC_CHANNEL_0,
         .pixel_format = PIXFORMAT_JPEG,
-        .frame_size = FRAMESIZE_SVGA,
-        .jpeg_quality = 8,
+        .frame_size = s_sizes[s_size_index].frame,
+        .jpeg_quality = s_qualities[s_quality_index].driver_quality,
         .fb_count = s_state.fb_count,
         .fb_location = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0 ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM,
         .grab_mode = CAMERA_GRAB_WHEN_EMPTY,
@@ -140,7 +165,44 @@ void photo_state_get(photo_state_t *out)
     out->supported=s_state.ready&&s_state.expected;
     out->enabled=s_active;out->photos=s_photos;out->errors=s_errors;
     out->last_bytes=s_last_bytes;out->last_ms=s_last_ms;
+    out->size_index=s_size_index;out->quality_index=s_quality_index;
+    out->width=s_sizes[s_size_index].width;out->height=s_sizes[s_size_index].height;
+    out->jpeg_quality=s_qualities[s_quality_index].driver_quality;
     xSemaphoreGive(s_lock);
+}
+
+esp_err_t photo_set_options(uint8_t size_index,uint8_t quality_index)
+{
+    if(size_index>=PHOTO_SIZE_COUNT||quality_index>=PHOTO_QUALITY_COUNT)
+        return ESP_ERR_INVALID_ARG;
+    /* Higher modes require PSRAM, not only the sensor's capability. */
+    if(size_index>1&&heap_caps_get_total_size(MALLOC_CAP_SPIRAM)==0)
+        return ESP_ERR_NOT_SUPPORTED;
+    if(!s_lock||xSemaphoreTake(s_lock,pdMS_TO_TICKS(1200))!=pdTRUE)
+        return ESP_ERR_TIMEOUT;
+    esp_err_t result=ESP_OK;
+    if(s_active){
+        sensor_t *sensor=esp_camera_sensor_get();
+        if(!sensor||!sensor->set_framesize||!sensor->set_quality){
+            result=ESP_ERR_INVALID_STATE;
+        }else{
+            uint8_t old_size=s_size_index,old_quality=s_quality_index;
+            if(sensor->set_framesize(sensor,s_sizes[size_index].frame)!=0){
+                result=ESP_FAIL;
+            }else if(sensor->set_quality(sensor,s_qualities[quality_index].driver_quality)!=0){
+                (void)sensor->set_framesize(sensor,s_sizes[old_size].frame);
+                (void)sensor->set_quality(sensor,s_qualities[old_quality].driver_quality);
+                result=ESP_FAIL;
+            }
+        }
+    }
+    if(result==ESP_OK){s_size_index=size_index;s_quality_index=quality_index;}
+    xSemaphoreGive(s_lock);
+    if(result==ESP_OK)
+        platform_log_event("INFO","photo","Photo resolution / JPEG profile changed");
+    else
+        platform_log_event("ERROR","photo","Camera rejected photo resolution / JPEG profile");
+    return result;
 }
 esp_err_t photo_power(bool on)
 {
@@ -236,18 +298,42 @@ esp_err_t photo_take(httpd_req_t *request,char *saved,size_t saved_cap)
 static esp_err_t photo_status(httpd_req_t *r)
 {
     photo_state_t p={0};photo_state_get(&p);
-    char json[420];
+    char json[670];
     int n=snprintf(json,sizeof(json),
       "{\"supported\":%s,\"enabled\":%s,\"photos\":%u,\"errors\":%u,"
-      "\"last_bytes\":%u,\"last_ms\":%u,\"psram_free\":%u}",
+      "\"last_bytes\":%u,\"last_ms\":%u,\"psram_free\":%u,"
+      "\"size_index\":%u,\"quality_index\":%u,\"width\":%u,\"height\":%u,"
+      "\"resolution\":\"%s\",\"jpeg_profile\":\"%s\",\"jpeg_quality\":%u}",
       p.supported?"true":"false",p.enabled?"true":"false",
       (unsigned)p.photos,(unsigned)p.errors,
       (unsigned)p.last_bytes,(unsigned)p.last_ms,
-      (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+      (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+      (unsigned)p.size_index,(unsigned)p.quality_index,
+      (unsigned)p.width,(unsigned)p.height,
+      s_sizes[p.size_index].id,s_qualities[p.quality_index].id,
+      (unsigned)p.jpeg_quality);
     if(n<0||n>=(int)sizeof(json))return ESP_FAIL;
     httpd_resp_set_type(r,"application/json");
     httpd_resp_set_hdr(r,"Cache-Control","no-store");
     return httpd_resp_send(r,json,n);
+}
+static esp_err_t photo_options_http(httpd_req_t *r)
+{
+    char qs[96],sz[8],quality[8],tail;
+    if(httpd_req_get_url_query_str(r,qs,sizeof(qs))!=ESP_OK ||
+       httpd_query_key_value(qs,"size",sz,sizeof(sz))!=ESP_OK ||
+       httpd_query_key_value(qs,"quality",quality,sizeof(quality))!=ESP_OK)
+        return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,"size and quality required");
+    unsigned size_index=0,quality_index=0;
+    if(sscanf(sz,"%u%c",&size_index,&tail)!=1||
+       sscanf(quality,"%u%c",&quality_index,&tail)!=1||
+       size_index>=PHOTO_SIZE_COUNT||quality_index>=PHOTO_QUALITY_COUNT)
+        return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,"invalid photo settings");
+    esp_err_t e=photo_set_options((uint8_t)size_index,(uint8_t)quality_index);
+    if(e!=ESP_OK)
+        return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,
+                   e==ESP_ERR_NOT_SUPPORTED?"High resolution requires PSRAM":"Sensor rejected setting or camera busy");
+    return photo_status(r);
 }
 static esp_err_t photo_toggle(httpd_req_t *r)
 {
@@ -270,7 +356,8 @@ esp_err_t photo_web_register(httpd_handle_t h)
       {.uri="/api/v1/photo/state",.method=HTTP_GET,.handler=photo_status},
       {.uri="/api/v1/photo/on",.method=HTTP_POST,.handler=photo_toggle},
       {.uri="/api/v1/photo/off",.method=HTTP_POST,.handler=photo_toggle},
-      {.uri="/api/v1/photo/take",.method=HTTP_POST,.handler=photo_capture_http}
+      {.uri="/api/v1/photo/take",.method=HTTP_POST,.handler=photo_capture_http},
+      {.uri="/api/v1/photo/options",.method=HTTP_POST,.handler=photo_options_http}
     };
     for(size_t i=0;i<sizeof(routes)/sizeof(routes[0]);i++){
         esp_err_t e=auth_register_uri_handler(h,&routes[i]);
