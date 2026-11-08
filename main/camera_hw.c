@@ -257,7 +257,7 @@ static esp_err_t runtime_state_get(httpd_req_t *req)
         "\"actual\":\"%s\",\"capture_count\":%lu,\"failures\":%lu,"
         "\"last_jpeg_bytes\":%lu,\"last_capture_ms\":%lu,"
         "\"psram_free_bytes\":%lu,\"last_error\":\"%s\","
-        "\"snapshot_url\":\"/api/v1/camera/snapshot.jpg\"}",
+        "\"snapshot_url\":\"/api/v1/camera/snapshot\"}",
         s_state.ready && s_state.expected ? "true" : "false",
         active?"true":"false",active?"READY":"OFF",
         (unsigned long)count,(unsigned long)fail,(unsigned long)bytes,
@@ -323,7 +323,7 @@ esp_err_t camera_web_register(httpd_handle_t server)
         {.uri="/api/v1/camera/runtime",.method=HTTP_GET,.handler=runtime_state_get},
         {.uri="/api/v1/camera/enable",.method=HTTP_POST,.handler=camera_mode_post},
         {.uri="/api/v1/camera/disable",.method=HTTP_POST,.handler=camera_mode_post},
-        {.uri="/api/v1/camera/snapshot.jpg",.method=HTTP_GET,.handler=snapshot_get},
+        {.uri="/api/v1/camera/snapshot",.method=HTTP_POST,.handler=snapshot_get},
     };
     for(size_t i=0;i<sizeof(endpoints)/sizeof(endpoints[0]);i++){
         esp_err_t e=auth_register_uri_handler(server,&endpoints[i]);
