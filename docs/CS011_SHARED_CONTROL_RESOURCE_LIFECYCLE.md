@@ -54,7 +54,7 @@ Modes: OFF / ERROR / INFO / DEBUG. Event severity cutoff applies to application 
 GET /api/v1/runtime: state revision, camera/log modes, capture metrics, memory.
 POST /api/v1/camera/enable: start camera only on explicit request (authorized when configured).
 POST /api/v1/camera/disable: cancel/reject if busy; after completion deinit/free resources.
-GET /api/v1/camera/snapshot.jpg: explicit on-demand image; reject if camera OFF; no cache, no implicit stream.
+POST /api/v1/camera/snapshot: explicit on-demand JPEG, CSRF-protected; reject if camera OFF; no cache, no implicit stream.
 GET /api/v1/logs/config: current application log mode and dropped event counters.
 POST /api/v1/logs/config: chosen OFF/ERROR/INFO/DEBUG level.
 GET /api/v1/logs: read-only; never enables anything.
