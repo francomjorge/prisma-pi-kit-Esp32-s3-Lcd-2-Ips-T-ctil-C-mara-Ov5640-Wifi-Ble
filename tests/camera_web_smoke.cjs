@@ -31,7 +31,7 @@ const fetch=async(url, options={})=>{
      capture_count:snapshots,failures:0,last_jpeg_bytes:1700,
      last_capture_ms:44,psram_free_bytes:4000000})};
  }
- if(url==='/api/v1/camera/snapshot.jpg'){
+ if(url==='/api/v1/camera/snapshot'){
    assert(active,'snapshot cannot happen while OFF');
    snapshots++;
    return {ok:true,blob:async()=>({type:'image/jpeg',size:1700})};
@@ -51,7 +51,7 @@ vm.runInContext(match[1],sandbox,{filename:'camera-synth-inline.js'});
 async function flush(){for(let i=0;i<6;i++)await Promise.resolve()}
 (async()=>{
  await flush();
- assert.equal(requests.filter(x=>x.url.endsWith('snapshot.jpg')).length,0,'must never auto-capture');
+ assert.equal(requests.filter(x=>x.url.endsWith('/snapshot')).length,0,'must never auto-capture');
  assert.equal(requests.filter(x=>x.url.endsWith('/enable')).length,0,'must never auto-enable');
  assert(els.get('#cameraState').textContent.includes('OFF'));
  assert.equal(els.get('#takePhoto').disabled,true);
