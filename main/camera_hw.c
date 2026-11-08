@@ -56,8 +56,8 @@ esp_err_t camera_hw_probe(void)
         .ledc_timer = LEDC_TIMER_0,
         .ledc_channel = LEDC_CHANNEL_0,
         .pixel_format = PIXFORMAT_JPEG,
-        .frame_size = FRAMESIZE_QVGA,
-        .jpeg_quality = 12,
+        .frame_size = FRAMESIZE_VGA,
+        .jpeg_quality = 10,
         .fb_count = s_state.fb_count,
         .fb_location = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0 ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM,
         .grab_mode = CAMERA_GRAB_WHEN_EMPTY,
@@ -121,8 +121,8 @@ static camera_config_t default_camera_config(void)
         .ledc_timer = LEDC_TIMER_0,
         .ledc_channel = LEDC_CHANNEL_0,
         .pixel_format = PIXFORMAT_JPEG,
-        .frame_size = FRAMESIZE_QVGA,
-        .jpeg_quality = 12,
+        .frame_size = FRAMESIZE_VGA,
+        .jpeg_quality = 10,
         .fb_count = s_state.fb_count,
         .fb_location = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0 ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM,
         .grab_mode = CAMERA_GRAB_WHEN_EMPTY,
@@ -200,7 +200,12 @@ esp_err_t photo_take(httpd_req_t *request,char *saved,size_t saved_cap)
     if(!s_lock||xSemaphoreTake(s_lock,pdMS_TO_TICKS(100))!=pdTRUE)return ESP_ERR_TIMEOUT;
     if(!s_active){xSemaphoreGive(s_lock);return ESP_ERR_INVALID_STATE;}
     const int64_t begun=esp_timer_get_time();
-    camera_fb_t *fb=esp_camera_fb_get();
+    /* WHEN_EMPTY may expose a frame produced before the button press.
+     * Discard it and request a subsequent frame with the same single buffer.
+     * Explicit snapshot only; no background capture loop. */
+    camera_fb_t *discard=esp_camera_fb_get();
+    if(discard)esp_camera_fb_return(discard);
+    camera_fb_t *fb=discard?esp_camera_fb_get():NULL;
     esp_err_t e=ESP_FAIL;
     char path[48]={0};
     if(fb&&fb->buf&&fb->len>0&&fb->format==PIXFORMAT_JPEG){
