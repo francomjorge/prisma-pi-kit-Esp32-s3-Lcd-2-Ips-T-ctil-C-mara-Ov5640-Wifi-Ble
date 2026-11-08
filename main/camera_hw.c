@@ -196,11 +196,21 @@ esp_err_t camera_hw_capture_to_storage(char *output_name,size_t capacity)
         strlcpy(folder,root,sizeof(folder));
         strlcat(folder,"/snapshots",sizeof(folder));
         if(mkdir(folder,0755)!=0 && errno!=EEXIST) result=ESP_FAIL;
-        snprintf(name,sizeof(name),"shot_%010lu.jpg",
-                 (unsigned long)(s_capture_count+1U));
-        strlcpy(path,folder,sizeof(path));
-        strlcat(path,"/",sizeof(path));
-        strlcat(path,name,sizeof(path));
+        /* Preserve shots across reboots; never overwrite a previous JPEG.
+         * Storage operations are serialized by storage_lock. */
+        bool available=false;
+        for(uint32_t candidate=s_capture_count+1U;result==ESP_OK&&candidate<1000000U;candidate++){
+            snprintf(name,sizeof(name),"shot_%010lu.jpg",(unsigned long)candidate);
+            strlcpy(path,folder,sizeof(path));
+            strlcat(path,"/",sizeof(path));
+            strlcat(path,name,sizeof(path));
+            struct stat existing;
+            if(stat(path,&existing)!=0){
+                if(errno==ENOENT){available=true;break;}
+                result=ESP_FAIL;
+            }
+        }
+        if(!available)result=ESP_FAIL;
         if(result==ESP_OK){
             FILE *file=fopen(path,"wb");
             if(!file) result=ESP_FAIL;
