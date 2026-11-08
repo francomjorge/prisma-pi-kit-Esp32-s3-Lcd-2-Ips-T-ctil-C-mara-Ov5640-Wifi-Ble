@@ -216,8 +216,9 @@ static esp_err_t photo_status(httpd_req_t *r)
     int n=snprintf(json,sizeof(json),
       "{\"supported\":%s,\"enabled\":%s,\"photos\":%u,\"errors\":%u,"
       "\"last_bytes\":%u,\"last_ms\":%u,\"psram_free\":%u}",
-      p.supported?"true":"false",p.enabled?"true":"false",p.photos,p.errors,
-      p.last_bytes,p.last_ms,
+      p.supported?"true":"false",p.enabled?"true":"false",
+      (unsigned)p.photos,(unsigned)p.errors,
+      (unsigned)p.last_bytes,(unsigned)p.last_ms,
       (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     if(n<0||n>=(int)sizeof(json))return ESP_FAIL;
     httpd_resp_set_type(r,"application/json");
@@ -234,7 +235,7 @@ static esp_err_t photo_capture_http(httpd_req_t *r)
 {
     esp_err_t e=photo_take(r,NULL,0);
     if(e==ESP_ERR_INVALID_STATE)return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,"CAMERA OFF");
-    if(e==ESP_ERR_TIMEOUT)return httpd_resp_send_err(r,HTTPD_503_SERVICE_UNAVAILABLE,"CAMERA BUSY");
+    if(e==ESP_ERR_TIMEOUT)return httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,"CAMERA BUSY");
     return e;
 }
 esp_err_t photo_web_register(httpd_handle_t h)
