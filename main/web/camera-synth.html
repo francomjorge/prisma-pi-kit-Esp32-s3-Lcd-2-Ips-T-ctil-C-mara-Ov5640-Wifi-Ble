@@ -29,13 +29,13 @@
 <button id="on" type="button">CAMERA ON</button>
 <button id="take" type="button">TAKE PHOTO</button>
 <button id="off" type="button">CAMERA OFF</button>
-<a href="/admin#FILES">FILES / ARCHIVOS</a>
+<a href="/admin?photo_folder=1#FILES">FILES / ARCHIVOS</a>
 <a href="/admin#DIAGNOSTICS">LOGS</a>
 </div>
 <p id="message" class="note" role="status"></p>
 <div class="preview"><img id="image" alt="Foto de cámara OV5640" hidden><p id="empty" class="note">Todavía no hay fotografía.</p></div>
 <div class="controls"><a id="download" download="prisma-photo.jpg" hidden>DOWNLOAD PHOTO</a></div>
-<p class="note">Al pulsar CAMERA OFF se libera el driver y sus buffers. La foto tomada desde el appliance queda guardada en INTERNAL/photos y puede abrirse desde FILES.</p>
+<section><h2>PHOTOS GUARDADAS EN ESP32</h2><p class="note">Capturas tomadas desde LCD y navegador en INTERNAL/photos.</p><div class="controls"><button id="reloadFiles" type="button">REFRESH PHOTOS</button></div><p id="filesMessage" class="note"></p><div id="gallery" class="grid"></div></section><p class="note">CAMERA OFF libera driver y buffers, sin iniciar streaming.</p>
 </section></main>
 <footer class="footer"><div class="shell">PRISMA-PI CAMERA SYNTH · CS011R</div></footer>
 <script>
@@ -80,19 +80,38 @@ async function takePhoto(){
  busy=true;paint();
  try{
   const response=await call('/api/v1/photo/take',{method:'POST',headers:{'X-PRISMA-Action':'1'}});
+  const savedPath=response.headers.get('X-PRISMA-Photo-Path');
   const jpeg=await response.blob();
   if(jpeg.type!=='image/jpeg'||jpeg.size===0)throw Error('JPEG no válido');
   release();photoUrl=URL.createObjectURL(jpeg);
   $('image').src=photoUrl;$('image').hidden=false;$('empty').hidden=true;
   $('download').href=photoUrl;$('download').hidden=false;
-  message('Foto capturada. Puede descargarse ahora.');
+  message('FOTO GUARDADA: '+(savedPath||'/photos/')+' · '+jpeg.size+' bytes');
+  await loadPhotos();
  }catch(err){message('ERROR CAPTURA: '+err.message)}
  finally{busy=false;await refresh();}
 }
 $('on').onclick=()=>toggle(true);
 $('off').onclick=()=>toggle(false);
+async function loadPhotos(){
+ try{
+  const response=await call('/api/v1/files/list?volume=internal&path=%2Fphotos');
+  const data=await response.json();
+  const photos=(data.entries||[]).filter(e=>e.type==='file'&&/\.jpe?g$/i.test(e.name)).sort((a,b)=>b.name.localeCompare(a.name)).slice(0,40);
+  $('filesMessage').textContent=photos.length+' fotos en INTERNAL/photos';
+  $('gallery').innerHTML=photos.map(p=>{
+    const url='/api/v1/files/download?volume=internal&path='+encodeURIComponent('/photos/'+p.name)+'&inline=1';
+    return '<div class="card"><a href="'+url+'" target="_blank" rel="noopener"><img loading="lazy" style="width:100%;max-height:180px;object-fit:contain" src="'+url+'" alt="Foto guardada"></a><p>'+p.name.replace(/[^a-zA-Z0-9._-]/g,'_')+' · '+p.size+' bytes</p><a href="'+url+'" target="_blank" rel="noopener">VER FOTO</a></div>';
+  }).join('')||'<p class="note">Sin archivos JPEG en esta carpeta.</p>';
+ }catch(err){
+  $('filesMessage').textContent='No se pudo listar INTERNAL/photos: '+err.message;
+  $('gallery').innerHTML='';
+ }
+}
+$('reloadFiles').onclick=loadPhotos;
 $('take').onclick=takePhoto;
 refresh();
+loadPhotos();
 setInterval(()=>{if(!document.hidden&&!busy)refresh()},4000);
 window.addEventListener('beforeunload',release);
 </script>
