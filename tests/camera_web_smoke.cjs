@@ -55,19 +55,19 @@ async function flush(){for(let i=0;i<6;i++)await Promise.resolve()}
  assert(els.get('#cameraState').textContent.includes('OFF'));
  assert.equal(els.get('#takePhoto').disabled,true);
 
- els.get('#cameraOn').onclick();
+ await els.get('#cameraOn').onclick();
  await flush();
  assert.equal(active,true);
  assert(els.get('#cameraState').textContent.includes('READY'));
  assert.equal(els.get('#takePhoto').disabled,false);
 
- els.get('#takePhoto').onclick();
+ await els.get('#takePhoto').onclick();
  await flush();
  assert.equal(snapshots,1,'one explicit click = one JPEG request');
  assert.equal(els.get('#photo').hidden,false);
  assert.equal(els.get('#photoDownload').hidden,false);
 
- els.get('#cameraOff').onclick();
+ await els.get('#cameraOff').onclick();
  await flush();
  assert.equal(active,false);
  assert(revoked>=1,'browser JPEG preview must be released on OFF');
