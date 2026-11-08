@@ -10,7 +10,7 @@ assert '{.uri="/api/v1/photo/take",.method=HTTP_POST' in c
 assert "esp_camera_fb_return(fb)" in c and "esp_camera_fb_get()" in c
 assert "esp_camera_deinit()" in c
 assert "storage_volume_root(\"internal\")" in c
-assert "storage_lock(300)" in c and "storage_unlock();" in c
+assert "storage_lock(1500)" in c and "storage_unlock();" in c
 assert 'photo_web_register(s_server)' in web
 assert "photo_state_get(&p)" in lcd
 assert "nav=LCD_NAV_PHOTO" in lcd
