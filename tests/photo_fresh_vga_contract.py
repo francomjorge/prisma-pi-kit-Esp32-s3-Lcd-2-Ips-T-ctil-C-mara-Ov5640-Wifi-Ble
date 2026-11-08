@@ -2,8 +2,8 @@
 from pathlib import Path
 c=Path("main/camera_hw.c").read_text()
 w=Path("main/web/camera-synth.html").read_text()
-assert c.count(".frame_size = FRAMESIZE_SVGA,")==2
-assert c.count(".jpeg_quality = 8,")==2
+assert c.count(".frame_size = s_sizes[s_size_index].frame,")==2
+assert c.count(".jpeg_quality = s_qualities[s_quality_index].driver_quality,")==2
 assert c.count(".fb_count = s_state.fb_count,")==2
 assert "s_state.fb_count = 1" in c
 assert "camera_fb_t *discard=esp_camera_fb_get();" in c
