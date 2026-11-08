@@ -23,9 +23,10 @@ const document={
 };
 const fetch=async(url, options={})=>{
  requests.push({url,method:options.method||'GET'});
- if(url==='/api/v1/camera/enable'){active=true}
- if(url==='/api/v1/camera/disable'){active=false}
- if(url==='/api/v1/camera/runtime'){
+ if(url==='/api/v1/camera/enable')active=true;
+ if(url==='/api/v1/camera/disable')active=false;
+ if(url==='/api/v1/camera/enable'||url==='/api/v1/camera/disable'||
+    url==='/api/v1/camera/runtime'){
    return {ok:true,json:async()=>({supported:true,enabled:active,
      capture_count:snapshots,failures:0,last_jpeg_bytes:1700,
      last_capture_ms:44,psram_free_bytes:4000000})};
