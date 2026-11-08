@@ -97,7 +97,7 @@ async function loadPhotos(){
  try{
   const response=await call('/api/v1/files/list?volume=internal&path=%2Fphotos');
   const data=await response.json();
-  const photos=(data.entries||[]).filter(e=>e.type==='file'&&/\.jpe?g$/i.test(e.name)).sort((a,b)=>b.name.localeCompare(a.name)).slice(0,40);
+  const photos=(data.entries||[]).filter(e=>e.type==='file'&&/\.jpe?g$/i.test(e.name)).sort((a,b)=>b.name.localeCompare(a.name)).slice(0,8);
   $('filesMessage').textContent=photos.length+' fotos en INTERNAL/photos';
   $('gallery').innerHTML=photos.map(p=>{
     const url='/api/v1/files/download?volume=internal&path='+encodeURIComponent('/photos/'+p.name)+'&inline=1';
