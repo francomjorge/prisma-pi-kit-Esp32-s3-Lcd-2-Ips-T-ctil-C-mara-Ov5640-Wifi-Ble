@@ -44,11 +44,11 @@ case'ABOUT':intro.textContent='Identidad canónica.';h=cards([['Product',state.p
 body.innerHTML=h;$('#footerNet').textContent=state.mdns_url||state.softap?.ip||'local appliance';if(current==='NETWORK')setTimeout(bindNetwork)}
 function renderNetwork(){
  const h=cards([
-   ['Mode','AP + STA'],['AP SSID',state.softap?.ssid],['AP IP (fallback)',state.softap?.ip],
+   ['Mode',state.sta?.mode||'—'],['SoftAP running',state.softap?.running?'YES':'NO'],['AP client connects',state.softap?.connect_count??'—'],['AP client disconnects',state.softap?.disconnect_count??'—'],['Last AP disconnect reason',state.softap?.last_disconnect_reason??'—'],['AP SSID',state.softap?.ssid],['AP IP (fallback)',state.softap?.ip],
    ['Security',state.softap?.security],['Current AP channel',state.softap?.channel],
    ['AP clients',state.softap?.clients+' / '+state.softap?.max_clients],
    ['Unique hostname',state.hostname],['mDNS URL',state.mdns_url],
-   ['STA configured',state.sta?.configured?'YES':'NO'],['STA connected',state.sta?.connected?'YES':'NO'],
+   ['STA configured',state.sta?.configured?'YES':'NO'],['STA connecting',state.sta?.connecting?'YES':'NO'],['STA connected',state.sta?.connected?'YES':'NO'],
    ['STA SSID',state.sta?.ssid||'—'],['STA IP',state.sta?.ip||'—'],
    ['STA RSSI',state.sta?.connected?state.sta?.rssi+' dBm':'—'],
    ['Connect attempts',state.sta?.connect_attempts??'—'],
@@ -71,7 +71,7 @@ function renderNetwork(){
    selectField('Channel','channel',config.ap?.channel,Array.from({length:13},(_,i)=>[String(i+1),String(i+1)]))+
    selectField('Max clients','max_clients',config.ap?.max_clients,[['1','1'],['2','2'],['3','3'],['4','4']])+
    '<div class="form-actions"><button type="submit" class="button primary">SAVE · REBOOT REQUIRED</button></div></form>')+
- panel('WI-FI STA','<div class="form-actions">'+
+ panel('WI-FI STA','<p class="storage-policy">El ESP32-S3 comparte una sola radio entre AP y STA. Si la red STA está en otro canal, el SoftAP puede cambiar de canal durante la conexión. Para máxima estabilidad local, desactivá STA con FORGET STA y usá el AP-only; los reintentos STA se aplazan mientras haya clientes conectados al SoftAP.</p><div class="form-actions">'+
    '<button class="button" id="scanBtn">SCAN NETWORKS</button>'+
    '<button class="button" id="retryStaBtn">RETRY CONNECTION</button>'+
    '<button class="button danger-btn" id="forgetBtn">FORGET STA</button></div>'+
