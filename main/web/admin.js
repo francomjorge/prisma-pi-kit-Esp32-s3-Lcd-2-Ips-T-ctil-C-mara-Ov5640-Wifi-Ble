@@ -80,7 +80,33 @@ function renderNetwork(){
    field('Password','password','', 'password','placeholder="blank for open network"')+
    '<div class="form-actions"><button type="submit" class="button primary">CONNECT + SAVE</button></div></form>');
 }
-function renderStorage(){const i=state.storage?.internal||{},s=state.storage?.sd||{};return '<div class="grid"><div class="card"><span class="label">INTERNAL · FAT/WL</span><strong>'+(i.mounted?'MOUNTED':'NOT MOUNTED')+'</strong><p>'+bytes(i.used_bytes)+' used / '+bytes(i.total_bytes)+' · '+bytes(i.free_bytes)+' free</p><div class="storage-meter"><i style="width:'+pct(i.used_bytes,i.total_bytes)+'%"></i></div></div><div class="card"><span class="label">MICROSD · FAT/SDSPI</span><strong>'+(s.mounted?'MOUNTED':'NOT MOUNTED')+'</strong><p>'+bytes(s.used_bytes)+' used / '+bytes(s.total_bytes)+' · '+bytes(s.free_bytes)+' free</p><div class="storage-meter"><i style="width:'+pct(s.used_bytes,s.total_bytes)+'%"></i></div></div></div><div class="storage-policy">Internal usa FAT con wear levelling y nombres largos UTF-8. No hay auto-format en boot ni límite total de archivos.</div><div class="form-actions" style="margin-top:15px">'+(!i.mounted?'<button class="button danger-btn" onclick="initInternal()">INITIALIZE INTERNAL</button>':'<button class="button" onclick="openFiles()">OPEN FILES</button>')+(!s.mounted?'<button class="button" onclick="retrySD()">RETRY SD</button>':'<button class="button" onclick="openFiles()">OPEN SD FILES</button>')+'</div>'}
+function renderStorage(){
+ const i=state.storage?.internal||{},s=state.storage?.sd||{};
+ const status=i.boot_init||'pending';
+ const overview=cards([
+   ['INTERNAL',i.mounted?'MOUNTED':'NOT MOUNTED'],
+   ['INTERNAL free',bytes(i.free_bytes)],
+   ['Boot initialize',status.toUpperCase()],
+   ['microSD',s.mounted?'MOUNTED':'NOT MOUNTED'],
+   ['microSD free',bytes(s.free_bytes)]
+ ]);
+ return overview+
+ panel('INTERNAL · FAT / WEAR LEVELLING',
+   '<p>'+bytes(i.used_bytes)+' used / '+bytes(i.total_bytes)+' total · '+bytes(i.free_bytes)+' free</p>'+
+   '<div class="storage-meter"><i style="width:'+pct(i.used_bytes,i.total_bytes)+'%"></i></div>'+
+   '<p class="storage-policy">La memoria interna se monta durante el arranque. Si está completamente borrada, el primer formateo se ejecuta DESPUÉS de iniciar LCD, AP y ADMIN. Si hay datos y falla el montaje, se conservan sin formatear.</p>'+
+   '<p class="storage-policy">Estado: '+esc(status)+' · '+esc(i.error||'—')+'</p>'+
+   '<div class="form-actions"><button class="button" onclick="openFiles(\'internal\')">BROWSE INTERNAL FILES</button>'+
+   '<button class="button danger-btn" onclick="initInternal()">INITIALIZE / FORMAT INTERNAL</button></div>')+
+ panel('MICROSD · FAT / SDSPI',
+   '<p>'+bytes(s.used_bytes)+' used / '+bytes(s.total_bytes)+' total · '+bytes(s.free_bytes)+' free</p>'+
+   '<div class="storage-meter"><i style="width:'+pct(s.used_bytes,s.total_bytes)+'%"></i></div>'+
+   '<p class="storage-policy">Estado: '+esc(s.error||'—')+'. RETRY SD intenta montar sin borrar datos. INITIALIZE / FORMAT SD borra la tarjeta y exige confirmación.</p>'+
+   '<div class="form-actions"><button class="button" onclick="retrySD()">RETRY / MOUNT SD</button>'+
+   '<button class="button" onclick="openFiles(\'sd\')">BROWSE SD FILES</button>'+
+   '<button class="button danger-btn" onclick="initSD()">INITIALIZE / FORMAT SD</button></div>')+
+ '<div class="storage-policy">El explorador completo se encuentra en la pestaña FILES, separada de STORAGE. Las operaciones de formato son destructivas y nunca se realizan automáticamente sobre la microSD.</div>';
+}
 function renderDiagnostics(){const checks=health?.checks||{};let h='<div class="health-grid">'+Object.entries(checks).map(([k,v])=>'<div class="health-item"><b>'+esc(k.toUpperCase())+'</b><span>'+esc(v)+'</span></div>').join('')+'</div>';h+=cards([['Health',health?.status||'—'],['Retained events',logs?.retained??'—'],['Total events',health?.event_count??'—'],['Heap free',bytes(health?.memory?.heap_free)],['Heap min',bytes(health?.memory?.heap_min)],['PSRAM free',bytes(health?.memory?.psram_free)]]);h+='<div class="form-actions"><button class="button" onclick="loadLogs()">REFRESH LOG</button><a class="button" href="/api/v1/logs" target="_blank">RAW JSON</a><button class="button primary" onclick="runReadOnlyCheck()">RUN READ-ONLY CHECK</button><a class="button" href="/api/v1/diagnostics/report">DOWNLOAD SUPPORT REPORT</a></div><div class="storage-policy">Informe JSON sin contraseñas: hardware, memoria, red (sin SSID/MAC), almacenamiento y eventos desde el último inicio. No captura imágenes ni modifica archivos.</div><div id="readOnlyResult">'+(latestCheck?'<pre>'+esc(JSON.stringify(latestCheck,null,2))+'</pre>':'')+'</div><div class="log-table" id="logTable"><div class="file-empty">Loading events…</div></div>';return h}
 async function runReadOnlyCheck(){try{latestCheck=await api('/api/v1/diagnostics/check');const b=$('#readOnlyResult');if(b)b.innerHTML='<pre>'+esc(JSON.stringify(latestCheck,null,2))+'</pre>';notice('Read-only check: '+latestCheck.result)}catch(e){notice(e.message,'error')}}
 async function loadLogs(){try{logs=await api('/api/v1/logs');const t=$('#logTable');if(!t)return;t.innerHTML='<div class="log-row log-head"><span>SEQ</span><span>UPTIME</span><span>SUBSYSTEM</span><span>MESSAGE</span></div>'+((logs.events||[]).slice().reverse().map(e=>'<div class="log-row log-'+esc(e.level)+'"><span>'+e.sequence+'</span><span>'+Math.round(e.uptime_ms/1000)+'s</span><span>'+esc(e.subsystem)+'</span><span>['+esc(e.level)+'] '+esc(e.message)+'</span></div>').join('')||'<div class="file-empty">No events</div>')}catch(e){notice(e.message,'error')}}
@@ -88,7 +114,35 @@ function bindNetwork(){const ap=$('#apForm');if(ap)ap.onsubmit=async e=>{e.preve
 function bindSecurity(){const form=$('#adminPassForm');if(!form)return;form.onsubmit=async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(form).entries());if(data.new_password!==data.confirm_password)return notice('Las contraseñas nuevas no coinciden.','error');if(security?.enabled&&!data.current_password)return notice('Ingresá la contraseña actual.','error');try{await api('/api/v1/security',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:data.current_password||'',new_password:data.new_password})});notice('Contraseña Admin guardada. El navegador solicitará las nuevas credenciales.');setTimeout(()=>location.reload(),1000)}catch(x){notice(x.message,'error')}}}
 async function bindOta(){const form=$('#otaForm'),info=$('#otaInfo'),install=$('#otaInstall'),rollback=$('#otaRollback');if(!form||!info)return;let data=null;try{data=await api('/api/v1/update/status');info.textContent='Running: '+data.running_slot+' / '+data.running_version+' / '+data.running_state+' | Next slot: '+data.target_slot+' ('+bytes(data.target_capacity_bytes)+') | Rollback compiled: '+(data.rollback_compiled?'YES':'NO')+' | Previous valid: '+(data.rollback_available?'YES':'NO')+' | Upload: '+(data.upload_allowed?'READY':'BLOCKED: '+data.reason);install.disabled=!data.upload_allowed;rollback.disabled=!(data.upload_allowed&&data.rollback_compiled&&data.rollback_available)}catch(e){info.textContent='Cannot read OTA status: '+e.message;notice(e.message,'error');return}form.onsubmit=async e=>{e.preventDefault();if(!data.upload_allowed)return notice('Configurá contraseña Admin y WPA2 antes de OTA.','error');const file=form.elements.firmware.files[0],sha=String(form.elements.sha256.value||'').trim();if(!file||!/^[0-9a-f]{64}$/i.test(sha))return notice('Seleccioná app BIN y SHA-256 exacto.','error');if(file.size>Number(data.target_capacity_bytes))return notice('El firmware supera el tamaño del slot OTA.','error');if(!confirm('¿Instalar '+file.name+' mediante OTA y reiniciar?'))return;install.disabled=true;rollback.disabled=true;notice('Uploading '+file.name+' ('+bytes(file.size)+'). No cierres esta ventana ni cortes la alimentación.');try{const r=await api('/api/v1/update/upload',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-PRISMA-OTA':'app','X-PRISMA-SHA256':sha},body:file});notice('OTA verificado: '+r.version+' / '+r.slot+'. Reinicio solicitado; volvés a entrar cuando esté disponible.')}catch(ex){notice('OTA rechazado: '+ex.message,'error');install.disabled=false;rollback.disabled=!(data.rollback_compiled&&data.rollback_available)}};rollback.onclick=async()=>{if(!confirm('Revertir a la imagen previa válida? El appliance se reiniciará y cambiará de versión.'))return;try{await api('/api/v1/update/rollback',{method:'POST',headers:{'X-PRISMA-Confirm':'rollback'}});notice('Rollback solicitado; reiniciando en la versión anterior.')}catch(e){notice('Rollback no realizado: '+e.message,'error')}}}
 function bindSystem(){const rb=$('#rebootBtn');if(rb)rb.onclick=async()=>{if(!confirm('Reboot appliance?'))return;try{await postForm('/api/v1/system/reboot');notice('Reiniciando…')}catch(e){notice(e.message,'error')}};const reset=$('#resetCfgBtn');if(reset)reset.onclick=async()=>{if(!confirm('Resetear configuración de red/identidad? Los archivos se preservan.'))return;try{const r=await api('/api/v1/config/factory-reset',{method:'POST'});notice('Settings restaurados. Reboot requerido.')}catch(e){notice(e.message,'error')}};const ib=$('#importBtn'),fi=$('#importFile');if(ib&&fi){ib.onclick=()=>fi.click();fi.onchange=async()=>{if(!fi.files[0])return;try{const text=await fi.files[0].text();const r=await api('/api/v1/config/import',{method:'POST',headers:{'Content-Type':'application/json'},body:text});notice('Configuración importada. Reboot requerido.')}catch(e){notice(e.message,'error')}fi.value=''}}}
-async function initInternal(){if(!confirm('Inicializar INTERNAL? Borra sólo la partición de archivos interna.'))return;try{await postForm('/api/v1/storage/internal/init');await load()}catch(e){notice(e.message,'error')}}async function retrySD(){try{await postForm('/api/v1/storage/sd/retry');await load()}catch(e){notice(e.message,'error')}}function openFiles(){current='FILES';render()}
+async function initInternal(){
+ if(prompt('ATENCIÓN: se borran TODAS las fotos y archivos internos. Escribí BORRAR INTERNAL para continuar:')!=='BORRAR INTERNAL')return;
+ try{
+  await postForm('/api/v1/storage/internal/init',{confirm:'ERASE_INTERNAL'});
+  await load();
+  notice('INTERNAL inicializada. Archivos anteriores eliminados.');
+ }catch(e){notice(e.message,'error')}
+}
+async function initSD(){
+ if(prompt('ATENCIÓN: se borran TODOS los archivos de la microSD. Escribí BORRAR SD para continuar:')!=='BORRAR SD')return;
+ try{
+  await postForm('/api/v1/storage/sd/init',{confirm:'ERASE_SD'});
+  await load();
+  notice('microSD inicializada. Archivos anteriores eliminados.');
+ }catch(e){notice(e.message,'error')}
+}
+async function retrySD(){
+ try{
+  await postForm('/api/v1/storage/sd/retry');
+  await load();
+  notice('microSD montada sin formatear.');
+ }catch(e){notice(e.message,'error')}
+}
+function openFiles(volume='internal'){
+ if(volume==='sd')pane.sd.path='/';
+ current='FILES';
+ location.hash='FILES';
+ render();
+}
 function parentPath(p){if(p==='/')return '/';const a=p.replace(/\/$/,'').split('/');a.pop();return a.length<=1?'/':a.join('/')}function joinPath(p,n){return p==='/'?'/'+n:p+'/'+n}function ext(n){const i=n.lastIndexOf('.');return i>=0?n.slice(i).toLowerCase():''}function isImage(n){return ['.jpg','.jpeg','.png','.gif','.webp','.bmp'].includes(ext(n))}function isText(n){return ['.txt','.log','.md','.json','.csv','.ini','.cfg','.yaml','.yml','.html','.css','.js'].includes(ext(n))}function q(url,o){return url+'?'+new URLSearchParams(o)}function mounted(v){return !!state.storage?.[v==='internal'?'internal':'sd']?.mounted}function free(v){return mounted(v)?bytes(state.storage?.[v==='internal'?'internal':'sd']?.free_bytes)+' free':'not mounted'}
 function paneHtml(v){return '<section class="file-pane '+(mounted(v)?'':'offline')+'" id="pane-'+v+'"><div class="file-pane-head"><span class="file-pane-title">'+(v==='internal'?'INTERNAL':'SD')+'</span><span class="file-space">'+free(v)+'</span></div><div class="file-path" id="path-'+v+'">/</div><div class="file-toolbar"><button data-a="up">UP</button><button data-a="refresh">REFRESH</button><button data-a="mkdir">NEW DIR</button><button data-a="upload">UPLOAD</button><button data-a="download">DOWNLOAD</button><button data-a="rename">RENAME</button><button data-a="delete">DELETE</button><button data-a="copy">COPY →</button><input type="file" id="upload-'+v+'" multiple hidden></div><div class="file-list" id="list-'+v+'"></div></section>'}
 function initCommander(){const c=$('#commander');if(!c)return;c.innerHTML=paneHtml('internal')+paneHtml('sd')+'<div class="file-preview"><h3>PREVIEW / SELECTION</h3><div class="preview-content" id="preview">Select a file.</div></div>';['internal','sd'].forEach(v=>{const el=$('#pane-'+v);el.querySelectorAll('button').forEach(b=>b.onclick=()=>fileAction(v,b.dataset.a));$('#upload-'+v).onchange=e=>uploadFiles(v,[...e.target.files]);if(mounted(v))listPane(v);else drawPane(v)})}
@@ -102,4 +156,4 @@ async function load(){await refresh();render()}
 const initialSection=decodeURIComponent(location.hash.slice(1)).toUpperCase();if(SECTIONS.includes(initialSection))current=initialSection;
 SECTIONS.forEach(n=>{const b=document.createElement('button');b.textContent=n;b.onclick=()=>{current=n;location.hash=encodeURIComponent(n);render()};nav.appendChild(b)});
 window.addEventListener('hashchange',()=>{const section=decodeURIComponent(location.hash.slice(1)).toUpperCase();if(SECTIONS.includes(section)&&section!==current){current=section;render()}});
-load();setInterval(()=>{if(!document.hidden&&['OVERVIEW','DEVICE','DISPLAY','TOUCH','SENSORS','CAMERA HW','POWER','CONNECTIVITY','ABOUT'].includes(current))refresh().then(render)},10000);
+load();setInterval(()=>{if(!document.hidden&&['OVERVIEW','DEVICE','STORAGE','DISPLAY','TOUCH','SENSORS','CAMERA HW','POWER','CONNECTIVITY','ABOUT'].includes(current))refresh().then(render)},10000);
