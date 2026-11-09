@@ -171,37 +171,51 @@ void photo_state_get(photo_state_t *out)
     xSemaphoreGive(s_lock);
 }
 
+/* Camera changes are on-demand only; boot sequence is unchanged from CS012C.
+ * Esp-camera allocates JPEG frame buffers for the configured resolution at init.
+ * Changing sensor registers alone does not resize those buffers.
+ */
 esp_err_t photo_set_options(uint8_t size_index,uint8_t quality_index)
 {
     if(size_index>=PHOTO_SIZE_COUNT||quality_index>=PHOTO_QUALITY_COUNT)
         return ESP_ERR_INVALID_ARG;
-    /* Higher modes require PSRAM, not only the sensor's capability. */
     if(size_index>1&&heap_caps_get_total_size(MALLOC_CAP_SPIRAM)==0)
         return ESP_ERR_NOT_SUPPORTED;
-    if(!s_lock||xSemaphoreTake(s_lock,pdMS_TO_TICKS(1200))!=pdTRUE)
+    if(!s_lock||xSemaphoreTake(s_lock,pdMS_TO_TICKS(2500))!=pdTRUE)
         return ESP_ERR_TIMEOUT;
+    uint8_t old_size=s_size_index,old_quality=s_quality_index;
+    if(size_index==old_size&&quality_index==old_quality){
+        xSemaphoreGive(s_lock);
+        return ESP_OK;
+    }
     esp_err_t result=ESP_OK;
     if(s_active){
-        sensor_t *sensor=esp_camera_sensor_get();
-        if(!sensor||!sensor->set_framesize||!sensor->set_quality){
-            result=ESP_ERR_INVALID_STATE;
-        }else{
-            uint8_t old_size=s_size_index,old_quality=s_quality_index;
-            if(sensor->set_framesize(sensor,s_sizes[size_index].frame)!=0){
-                result=ESP_FAIL;
-            }else if(sensor->set_quality(sensor,s_qualities[quality_index].driver_quality)!=0){
-                (void)sensor->set_framesize(sensor,s_sizes[old_size].frame);
-                (void)sensor->set_quality(sensor,s_qualities[old_quality].driver_quality);
-                result=ESP_FAIL;
+        result=esp_camera_deinit();
+        if(result==ESP_OK){
+            s_active=false;
+            s_size_index=size_index;
+            s_quality_index=quality_index;
+            camera_config_t cfg=default_camera_config();
+            result=esp_camera_init(&cfg);
+            if(result==ESP_OK){
+                s_active=true;
+            }else{
+                s_size_index=old_size;
+                s_quality_index=old_quality;
+                camera_config_t recovery=default_camera_config();
+                esp_err_t recovered=esp_camera_init(&recovery);
+                s_active=(recovered==ESP_OK);
+                if(recovered!=ESP_OK)
+                    platform_log_event("ERROR","photo","Resolution rollback failed; camera requires restart");
             }
         }
+    }else{
+        s_size_index=size_index;
+        s_quality_index=quality_index;
     }
-    if(result==ESP_OK){s_size_index=size_index;s_quality_index=quality_index;}
     xSemaphoreGive(s_lock);
-    if(result==ESP_OK)
-        platform_log_event("INFO","photo","Photo resolution / JPEG profile changed");
-    else
-        platform_log_event("ERROR","photo","Camera rejected photo resolution / JPEG profile");
+    platform_log_event(result==ESP_OK?"INFO":"ERROR","photo",
+        result==ESP_OK?"JPEG resolution and buffers updated":"New resolution failed; previous settings retained");
     return result;
 }
 esp_err_t photo_power(bool on)
@@ -256,6 +270,36 @@ done:
     return result;
 }
 
+/* JPEG SOF size is authoritative. Reject corrupt images or a frame
+ * captured with the previous resolution, rather than saving it as valid. */
+static bool photo_jpeg_size(const camera_fb_t *fb,uint16_t *width,uint16_t *height)
+{
+    if(!fb||!fb->buf||fb->len<16||fb->format!=PIXFORMAT_JPEG)return false;
+    const uint8_t *p=fb->buf;
+    const size_t n=fb->len;
+    if(p[0]!=0xff||p[1]!=0xd8||p[n-2]!=0xff||p[n-1]!=0xd9)return false;
+    for(size_t i=2;i+8<n;){
+        if(p[i++]!=0xff)return false;
+        while(i<n&&p[i]==0xff)i++;
+        if(i>=n)return false;
+        uint8_t marker=p[i++];
+        if(marker==0xd9||marker==0xda)break;
+        if(marker==0x01||(marker>=0xd0&&marker<=0xd7))continue;
+        if(i+1>=n)return false;
+        size_t segment=((size_t)p[i]<<8)|p[i+1];
+        if(segment<2||segment>n-i)return false;
+        if((marker>=0xc0&&marker<=0xc3)||
+           (marker>=0xc5&&marker<=0xc7)||
+           (marker>=0xc9&&marker<=0xcb)){
+            if(segment<7)return false;
+            *height=(uint16_t)(((uint16_t)p[i+3]<<8)|p[i+4]);
+            *width=(uint16_t)(((uint16_t)p[i+5]<<8)|p[i+6]);
+            return true;
+        }
+        i+=segment;
+    }
+    return false;
+}
 esp_err_t photo_take(httpd_req_t *request,char *saved,size_t saved_cap)
 {
     if(saved&&saved_cap)saved[0]=0;
@@ -270,7 +314,17 @@ esp_err_t photo_take(httpd_req_t *request,char *saved,size_t saved_cap)
     camera_fb_t *fb=discard?esp_camera_fb_get():NULL;
     esp_err_t e=ESP_FAIL;
     char path[48]={0};
-    if(fb&&fb->buf&&fb->len>0&&fb->format==PIXFORMAT_JPEG){
+    uint16_t width=0,height=0;
+    bool valid=photo_jpeg_size(fb,&width,&height);
+    if(!valid||width!=s_sizes[s_size_index].width||
+       height!=s_sizes[s_size_index].height){
+        if(fb)esp_camera_fb_return(fb);
+        fb=esp_camera_fb_get();
+        width=height=0;
+        valid=photo_jpeg_size(fb,&width,&height);
+    }
+    if(valid&&width==s_sizes[s_size_index].width&&
+       height==s_sizes[s_size_index].height){
         e=save_photo(fb,path,sizeof(path));
         if(e==ESP_OK&&request){
             /* Return the exact JPEG that was persisted; do not take a
