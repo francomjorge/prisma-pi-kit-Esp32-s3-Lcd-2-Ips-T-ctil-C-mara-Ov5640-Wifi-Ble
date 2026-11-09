@@ -114,6 +114,7 @@ typedef struct {
 
 typedef struct {
     bool shared_spi_ready;
+    char internal_boot_status[24];
     storage_volume_state_t internal;
     storage_volume_state_t sd;
 } storage_state_t;
@@ -160,9 +161,11 @@ esp_err_t files_lcd_list(const char *volume,const char *logical,
                          uint32_t offset,files_lcd_page_t *out);
 
 esp_err_t storage_start(void);
+esp_err_t storage_postboot_start(void);
 void storage_get_state(storage_state_t *out);
 esp_err_t storage_internal_initialize(void);
 esp_err_t storage_sd_retry(void);
+esp_err_t storage_sd_initialize(void);
 const char *storage_volume_root(const char *volume);
 bool storage_volume_mounted(const char *volume);
 bool storage_lock(uint32_t timeout_ms);
