@@ -107,4 +107,8 @@ void app_main(void)
              net.sta_connected ? net.sta_ip : "disconnected",
              discovery.ready ? discovery.url : "unavailable");
     platform_log_event("INFO", "boot", "Startup sequence complete");
+    /* Intentionally after display, network, web and OTA validation:
+     * first-boot INTERNAL formatting must never block the screen. */
+    err=storage_postboot_start();
+    log_result("storage",err,"Post-boot storage task scheduled");
 }
