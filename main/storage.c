@@ -2,9 +2,9 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include "esp_partition.h"
-#include "freertos/task.h"
 #include <string.h>
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "driver/sdspi_host.h"
 #include "esp_log.h"
