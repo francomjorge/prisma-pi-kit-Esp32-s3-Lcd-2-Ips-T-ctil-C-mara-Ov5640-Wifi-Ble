@@ -5,6 +5,9 @@
 #include "driver/sdspi_host.h"
 #include "esp_log.h"
 #include "esp_vfs_fat.h"
+#include "esp_partition.h"
+#include <sys/stat.h>
+#include <errno.h>
 #include "sdmmc_cmd.h"
 #include "wear_levelling.h"
 #include "app.h"
@@ -57,13 +60,47 @@ static esp_vfs_fat_mount_config_t internal_mount_config(void)
     return cfg;
 }
 
+/* Auto-format is safe only when the dedicated FAT partition is erased.
+ * Never auto-format an existing FAT/WL volume merely because mount failed:
+ * a failed mount may mean corruption with recoverable user photos.
+ */
+static bool internal_partition_is_blank(void)
+{
+    const esp_partition_t *partition=esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_DATA_FAT,INTERNAL_LABEL);
+    if(!partition||partition->size<4096)return false;
+    uint8_t page[256];
+    /* Sample several sectors, not only a potentially erased boot sector. */
+    const size_t samples[]={0,4096,65536};
+    for(size_t i=0;i<sizeof(samples)/sizeof(samples[0]);++i){
+        if(samples[i]+sizeof(page)>partition->size)continue;
+        if(esp_partition_read(partition,samples[i],page,sizeof(page))!=ESP_OK)return false;
+        for(size_t j=0;j<sizeof(page);++j)
+            if(page[j]!=0xFF)return false;
+    }
+    return true;
+}
+
+static void ensure_photo_folder(void)
+{
+    if(!s_state.internal.mounted)return;
+    if(mkdir("/internal/photos",0755)!=0&&errno!=EEXIST)
+        ESP_LOGW(TAG,"Could not create /internal/photos errno=%d",errno);
+}
+
 static esp_err_t mount_internal(void)
 {
     if (s_state.internal.mounted) return ESP_OK;
 
     esp_vfs_fat_mount_config_t cfg = internal_mount_config();
+    bool blank=internal_partition_is_blank();
+    cfg.format_if_mount_failed=blank;
     esp_err_t e = esp_vfs_fat_spiflash_mount_rw_wl(
         INTERNAL_MOUNT, INTERNAL_LABEL, &cfg, &s_internal_wl);
+    if(blank){
+        platform_log_event(e==ESP_OK?"WARN":"ERROR","storage",
+            e==ESP_OK?"Blank INTERNAL FAT initialized on first boot":"Blank INTERNAL FAT initialization failed");
+    }
     if (e != ESP_OK) {
         s_internal_wl = WL_INVALID_HANDLE;
         snprintf(s_state.internal.error, sizeof(s_state.internal.error),
@@ -73,6 +110,7 @@ static esp_err_t mount_internal(void)
     }
 
     s_state.internal.mounted = true;
+    ensure_photo_folder();
     refresh_volume(&s_state.internal);
     ESP_LOGI(TAG, "Internal FAT/WL mounted total=%lluMB free=%lluMB",
              (unsigned long long)(s_state.internal.total_bytes / (1024ULL * 1024ULL)),
