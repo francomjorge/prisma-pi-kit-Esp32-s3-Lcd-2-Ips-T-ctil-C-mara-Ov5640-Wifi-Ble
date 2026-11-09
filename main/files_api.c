@@ -169,9 +169,9 @@ static esp_err_t storage_get(httpd_req_t *req)
         "{\"schema\":\"prisma.storage.v1\","
         "\"shared_spi_ready\":%s,"
         "\"policy\":{\"file_count_quota\":false,\"directory_entry_limit\":false,"
-        "\"max_open_files_per_volume\":%u,\"auto_format\":false},"
+        "\"max_open_files_per_volume\":%u,\"auto_format\":false,\"auto_initialize_erased_internal\":true},"
         "\"internal\":{\"available\":%s,\"mounted\":%s,\"writable\":%s,"
-        "\"fs\":\"%s\",\"mount\":\"%s\",\"total_bytes\":%llu,"
+        "\"fs\":\"%s\",\"mount\":\"%s\",\"boot_init\":\"%s\",\"total_bytes\":%llu,"
         "\"used_bytes\":%llu,\"free_bytes\":%llu,\"error\":\"%s\"},"
         "\"sd\":{\"available\":%s,\"mounted\":%s,\"writable\":%s,"
         "\"fs\":\"%s\",\"mount\":\"%s\",\"total_bytes\":%llu,"
@@ -183,7 +183,7 @@ static esp_err_t storage_get(httpd_req_t *req)
         s.internal.available ? "true" : "false",
         s.internal.mounted ? "true" : "false",
         s.internal.writable ? "true" : "false",
-        s.internal.fs, s.internal.mount,
+        s.internal.fs, s.internal.mount, s.internal_boot_status,
         (unsigned long long)s.internal.total_bytes,
         (unsigned long long)s.internal.used_bytes,
         (unsigned long long)s.internal.free_bytes, int_err,
@@ -655,6 +655,11 @@ static esp_err_t copy_post(httpd_req_t *req)
 
 static esp_err_t internal_init_post(httpd_req_t *req)
 {
+    char body[96]={0},confirm[32]={0};
+    if(read_form(req,body,sizeof(body))!=ESP_OK||
+       !form_value(body,"confirm",confirm,sizeof(confirm))||
+       strcmp(confirm,"ERASE_INTERNAL")!=0)
+        return httpd_resp_send_err(req,HTTPD_400_BAD_REQUEST,"confirm=ERASE_INTERNAL required");
     esp_err_t e = storage_internal_initialize();
     if (e != ESP_OK) {
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
@@ -675,12 +680,26 @@ static esp_err_t sd_retry_post(httpd_req_t *req)
     return httpd_resp_sendstr(req, "{\"ok\":true,\"mounted\":true}");
 }
 
+static esp_err_t sd_init_post(httpd_req_t *req)
+{
+    char body[96]={0},confirm[32]={0};
+    if(read_form(req,body,sizeof(body))!=ESP_OK||
+       !form_value(body,"confirm",confirm,sizeof(confirm))||
+       strcmp(confirm,"ERASE_SD")!=0)
+        return httpd_resp_send_err(req,HTTPD_400_BAD_REQUEST,"confirm=ERASE_SD required");
+    esp_err_t e=storage_sd_initialize();
+    if(e!=ESP_OK)return httpd_resp_send_err(req,HTTPD_500_INTERNAL_SERVER_ERROR,esp_err_to_name(e));
+    httpd_resp_set_type(req,"application/json");
+    return httpd_resp_sendstr(req,"{\"ok\":true,\"mounted\":true,\"formatted\":true}");
+}
+
 esp_err_t files_web_register(httpd_handle_t server)
 {
     const httpd_uri_t routes[] = {
         {.uri="/api/v1/storage", .method=HTTP_GET, .handler=storage_get},
         {.uri="/api/v1/storage/internal/init", .method=HTTP_POST, .handler=internal_init_post},
         {.uri="/api/v1/storage/sd/retry", .method=HTTP_POST, .handler=sd_retry_post},
+        {.uri="/api/v1/storage/sd/init", .method=HTTP_POST, .handler=sd_init_post},
         {.uri="/api/v1/files/list", .method=HTTP_GET, .handler=list_get},
         {.uri="/api/v1/files/download", .method=HTTP_GET, .handler=download_get},
         {.uri="/api/v1/files/upload", .method=HTTP_POST, .handler=upload_post},
