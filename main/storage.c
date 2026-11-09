@@ -259,7 +259,11 @@ esp_err_t storage_internal_initialize(void)
     esp_err_t e = esp_vfs_fat_spiflash_format_rw_wl(
         INTERNAL_MOUNT, INTERNAL_LABEL);
     if (e == ESP_OK) e = mount_internal();
-
+    if(e==ESP_OK){
+        ensure_photo_directory();
+        strlcpy(s_state.internal_boot_status,"manual",sizeof(s_state.internal_boot_status));
+        platform_log_event("WARN","storage","INTERNAL formatted manually with explicit confirmation");
+    }
     storage_unlock();
     return e;
 }
@@ -283,7 +287,11 @@ esp_err_t storage_sd_initialize(void)
     if(s_state.sd.mounted&&s_sd_card){
         e=esp_vfs_fat_sdcard_format(SD_MOUNT,s_sd_card);
         if(e==ESP_OK)refresh_volume(&s_state.sd);
-        else snprintf(s_state.sd.error,sizeof(s_state.sd.error),"format: %s",esp_err_to_name(e));
+        else{
+            s_state.sd.mounted=false;
+            s_sd_card=NULL;
+            snprintf(s_state.sd.error,sizeof(s_state.sd.error),"format: %s",esp_err_to_name(e));
+        }
     }else{
         e=mount_sd(true);
     }
