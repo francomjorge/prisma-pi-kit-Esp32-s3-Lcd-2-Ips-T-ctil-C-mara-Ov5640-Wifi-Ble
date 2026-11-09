@@ -7,8 +7,8 @@
 #include "esp_wifi.h"
 #include "app.h"
 
-#define STA_RETRY_MIN_MS 2000U
-#define STA_RETRY_MAX_MS 30000U
+#define STA_RETRY_MIN_MS 5000U
+#define STA_RETRY_MAX_MS 120000U
 
 static const char *TAG = "CS010_NET";
 static esp_netif_t *s_ap;
@@ -18,6 +18,10 @@ static network_state_t s_state;
 static unsigned int s_retry_step;
 static int64_t s_retry_due_us;
 static bool s_skip_next_disconnect;
+static bool s_connect_pending;
+static bool s_ap_running;
+static uint32_t s_ap_connects,s_ap_disconnects;
+static uint16_t s_ap_last_reason;
 
 static bool sta_wanted(void)
 {
@@ -68,9 +72,18 @@ static void schedule_retry(void)
 static esp_err_t connect_sta_now(void)
 {
     if (!sta_wanted()) return ESP_ERR_INVALID_STATE;
+    if(s_state.sta_connected || s_connect_pending) return ESP_OK;
+    wifi_sta_list_t clients={0};
+    if(s_ap_running && esp_wifi_ap_get_sta_list(&clients)==ESP_OK && clients.num>0){
+        /* Do not channel-hop while a browser controls our SoftAP. */
+        schedule_retry();
+        return ESP_OK;
+    }
+    s_connect_pending=true;
     ++s_state.sta_connect_attempts;
     esp_err_t err = esp_wifi_connect();
     if (err != ESP_OK) {
+        s_connect_pending=false;
         ESP_LOGW(TAG, "STA connect request error: %s", esp_err_to_name(err));
         schedule_retry();
     }
@@ -94,7 +107,12 @@ static void refresh_state(void)
     settings_get(&cfg);
     s_state.sta_configured = cfg.sta_enabled && cfg.sta_ssid[0];
     strlcpy(s_state.sta_ssid, cfg.sta_ssid, sizeof(s_state.sta_ssid));
-    strlcpy(s_state.mode, "AP+STA", sizeof(s_state.mode));
+    strlcpy(s_state.mode,sta_wanted()?"AP+STA":"AP",sizeof(s_state.mode));
+    s_state.ap_running=s_ap_running;
+    s_state.ap_connect_count=s_ap_connects;
+    s_state.ap_disconnect_count=s_ap_disconnects;
+    s_state.ap_last_disconnect_reason=s_ap_last_reason;
+    s_state.sta_connecting=s_connect_pending;
 
     /* Read the running AP configuration, not pending settings awaiting reboot. */
     wifi_config_t ap_config = {0};
@@ -143,9 +161,16 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     (void)arg;
     (void)base;
-    if (id == WIFI_EVENT_STA_START) {
+    if(id==WIFI_EVENT_AP_START){
+        s_ap_running=true;
+        platform_log_event("INFO","network","SoftAP started");
+    } else if(id==WIFI_EVENT_AP_STOP){
+        s_ap_running=false;
+        platform_log_event("ERROR","network","SoftAP stopped unexpectedly");
+    } else if (id == WIFI_EVENT_STA_START) {
         if (sta_wanted()) (void)connect_sta_now();
     } else if (id == WIFI_EVENT_STA_DISCONNECTED) {
+        s_connect_pending=false;
         s_state.sta_connected = false;
         s_state.sta_ip[0] = '\0';
         s_state.sta_rssi = 0;
@@ -166,7 +191,17 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         } else {
             cancel_retry();
         }
-    } else if (id == WIFI_EVENT_AP_STACONNECTED || id == WIFI_EVENT_AP_STADISCONNECTED) {
+    } else if(id==WIFI_EVENT_AP_STACONNECTED){
+        ++s_ap_connects;
+        refresh_state();
+    } else if(id==WIFI_EVENT_AP_STADISCONNECTED){
+        ++s_ap_disconnects;
+        const wifi_event_ap_stadisconnected_t *event=(const wifi_event_ap_stadisconnected_t *)data;
+        s_ap_last_reason=event?event->reason:0;
+        char msg[112];
+        snprintf(msg,sizeof(msg),"SoftAP client disconnected reason=%u channel=%u",
+                 (unsigned)s_ap_last_reason,(unsigned)s_state.channel);
+        platform_log_event("WARN","network",msg);
         refresh_state();
     }
 }
@@ -176,6 +211,7 @@ static void ip_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     (void)arg;
     (void)data;
     if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
+        s_connect_pending=false;
         s_state.sta_connected = true;
         s_state.sta_last_connected_uptime_ms = (uint64_t)(esp_timer_get_time() / 1000);
         s_retry_step = 0;
@@ -252,23 +288,24 @@ esp_err_t network_start(void)
     wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
     if ((e = esp_wifi_init(&init)) != ESP_OK) return e;
     if ((e = esp_wifi_set_storage(WIFI_STORAGE_RAM)) != ESP_OK) return e;
-    esp_wifi_set_ps(WIFI_PS_NONE);
+    if((e=esp_wifi_set_ps(WIFI_PS_NONE))!=ESP_OK)return e;
     if ((e = esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                         wifi_event, NULL)) != ESP_OK) return e;
     if ((e = esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
                                         ip_event, NULL)) != ESP_OK) return e;
 
-    if ((e = esp_wifi_set_mode(WIFI_MODE_APSTA)) != ESP_OK) return e;
+    if ((e = esp_wifi_set_mode(sta_wanted()?WIFI_MODE_APSTA:WIFI_MODE_AP)) != ESP_OK) return e;
     if ((e = apply_ap_config(&cfg)) != ESP_OK) return e;
-    if ((e = apply_sta_config(&cfg)) != ESP_OK) return e;
+    if (sta_wanted() && (e = apply_sta_config(&cfg)) != ESP_OK) return e;
     if ((e = esp_wifi_start()) != ESP_OK) return e;
 
     s_state.ready = true;
     refresh_state();
-    ESP_LOGI(TAG, "AP+STA ready; AP=%s security=%s channel=%u IP=%s",
+    ESP_LOGI(TAG, "%s ready; AP=%s security=%s channel=%u IP=%s",
+             s_state.mode,
              s_state.ssid, s_state.open ? "open" : "WPA2",
              s_state.channel, s_state.ip[0] ? s_state.ip : "-");
-    platform_log_event("INFO", "network", "SoftAP started; STA reconnect backoff enabled");
+    platform_log_event("INFO", "network", sta_wanted()?"SoftAP+STA active":"SoftAP-only; STA disabled");
     return ESP_OK;
 }
 
@@ -297,10 +334,21 @@ esp_err_t network_scan(wifi_ap_info_t *out, size_t max_results, size_t *count)
     return ESP_OK;
 }
 
+static esp_err_t ensure_sta_mode(void)
+{
+    wifi_mode_t mode=WIFI_MODE_NULL;
+    esp_err_t e=esp_wifi_get_mode(&mode);
+    if(e!=ESP_OK)return e;
+    if(mode==WIFI_MODE_APSTA)return ESP_OK;
+    if(mode!=WIFI_MODE_AP)return ESP_ERR_INVALID_STATE;
+    return esp_wifi_set_mode(WIFI_MODE_APSTA);
+}
+
 esp_err_t network_retry_sta(void)
 {
     if (!s_state.ready || !sta_wanted()) return ESP_ERR_INVALID_STATE;
-    if (s_state.sta_connected) return ESP_OK;
+    if (s_state.sta_connected||s_connect_pending) return ESP_OK;
+    esp_err_t mode=ensure_sta_mode();if(mode!=ESP_OK)return mode;
     cancel_retry();
     s_retry_step = 0;
     esp_err_t e = connect_sta_now();
@@ -324,9 +372,11 @@ esp_err_t network_connect_sta(const char *ssid, const char *password)
     } else {
         s_skip_next_disconnect = false;
     }
+    if ((e = ensure_sta_mode()) != ESP_OK) return e;
     if ((e = apply_sta_config(&cfg)) != ESP_OK) return e;
     s_state.sta_connected = false;
     s_state.sta_ip[0] = 0;
+    s_connect_pending=false;
     e = connect_sta_now();
     refresh_state();
     return e;
@@ -339,10 +389,13 @@ esp_err_t network_forget_sta(void)
     cancel_retry();
     s_retry_step = 0;
     s_skip_next_disconnect = false;
+    s_connect_pending=false;
     (void)esp_wifi_disconnect();
     prisma_settings_t cfg = {0};
     settings_get(&cfg);
-    e = apply_sta_config(&cfg);
+    /* Return to AP-only to prevent background channel changes. */
+    e=esp_wifi_set_mode(WIFI_MODE_AP);
+    if(e!=ESP_OK)return e;
     s_state.sta_connected = false;
     s_state.sta_ip[0] = 0;
     s_state.sta_ssid[0] = 0;
