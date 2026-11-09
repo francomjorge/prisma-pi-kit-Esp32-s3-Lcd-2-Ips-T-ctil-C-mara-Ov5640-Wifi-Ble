@@ -69,13 +69,14 @@ static bool internal_partition_is_blank(void)
     const esp_partition_t *partition=esp_partition_find_first(
         ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_DATA_FAT,INTERNAL_LABEL);
     if(!partition||partition->size<4096)return false;
-    uint8_t page[256];
-    /* Sample several sectors, not only a potentially erased boot sector. */
-    const size_t samples[]={0,4096,65536};
-    for(size_t i=0;i<sizeof(samples)/sizeof(samples[0]);++i){
-        if(samples[i]+sizeof(page)>partition->size)continue;
-        if(esp_partition_read(partition,samples[i],page,sizeof(page))!=ESP_OK)return false;
-        for(size_t j=0;j<sizeof(page);++j)
+    uint8_t page[4096];
+    /* Check the ENTIRE partition: never assume an erased boot sector means
+     * the remaining storage (and user photos) are empty. */
+    for(size_t offset=0;offset<partition->size;offset+=sizeof(page)){
+        size_t count=partition->size-offset;
+        if(count>sizeof(page))count=sizeof(page);
+        if(esp_partition_read(partition,offset,page,count)!=ESP_OK)return false;
+        for(size_t j=0;j<count;++j)
             if(page[j]!=0xFF)return false;
     }
     return true;
