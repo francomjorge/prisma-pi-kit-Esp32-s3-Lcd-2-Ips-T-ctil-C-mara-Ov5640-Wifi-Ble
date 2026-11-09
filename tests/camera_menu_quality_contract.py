@@ -8,11 +8,12 @@ for x in ['FRAMESIZE_VGA','FRAMESIZE_SVGA','FRAMESIZE_XGA','FRAMESIZE_SXGA',
           'FRAMESIZE_UXGA','FRAMESIZE_QXGA','FRAMESIZE_5MP']:
  assert x in c
 assert 'photo_set_options(uint8_t size_index,uint8_t quality_index)' in c
-assert 'sensor->set_framesize(sensor,s_sizes[size_index].frame)' in c
-assert 'sensor->set_quality(sensor,s_qualities[quality_index].driver_quality)' in c
+assert 'result=esp_camera_deinit();' in c
+assert 'result=esp_camera_init(&cfg);' in c
+assert 'esp_err_t recovered=esp_camera_init(&recovery);' in c
 assert 'size_index>=PHOTO_SIZE_COUNT||quality_index>=PHOTO_QUALITY_COUNT' in c
 assert 'ESP_ERR_NOT_SUPPORTED' in c
-assert 's_size_index=size_index;s_quality_index=quality_index' in c
+assert 's_size_index=size_index;' in c and 's_quality_index=quality_index;' in c
 assert 'out->size_index=s_size_index;out->quality_index=s_quality_index;' in c
 assert 'photo_options_http' in c and '/api/v1/photo/options' in c
 assert 'photo_set_options((uint8_t)((cfg.size_index+1U)%7U)' in lcd
