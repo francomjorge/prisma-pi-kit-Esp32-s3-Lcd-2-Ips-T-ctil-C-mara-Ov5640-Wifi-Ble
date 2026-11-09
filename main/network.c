@@ -19,6 +19,8 @@ static unsigned int s_retry_step;
 static int64_t s_retry_due_us;
 static bool s_skip_next_disconnect;
 static bool s_connect_pending;
+static bool s_manual_connect;
+static bool s_suspend_sta_start;
 static bool s_ap_running;
 static uint32_t s_ap_connects,s_ap_disconnects;
 static uint16_t s_ap_last_reason;
@@ -74,7 +76,7 @@ static esp_err_t connect_sta_now(void)
     if (!sta_wanted()) return ESP_ERR_INVALID_STATE;
     if(s_state.sta_connected || s_connect_pending) return ESP_OK;
     wifi_sta_list_t clients={0};
-    if(s_ap_running && esp_wifi_ap_get_sta_list(&clients)==ESP_OK && clients.num>0){
+    if(!s_manual_connect && s_ap_running && esp_wifi_ap_get_sta_list(&clients)==ESP_OK && clients.num>0){
         /* Do not channel-hop while a browser controls our SoftAP. */
         schedule_retry();
         return ESP_OK;
@@ -168,7 +170,7 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         s_ap_running=false;
         platform_log_event("ERROR","network","SoftAP stopped unexpectedly");
     } else if (id == WIFI_EVENT_STA_START) {
-        if (sta_wanted()) (void)connect_sta_now();
+        if (sta_wanted()&&!s_suspend_sta_start) (void)connect_sta_now();
     } else if (id == WIFI_EVENT_STA_DISCONNECTED) {
         s_connect_pending=false;
         s_state.sta_connected = false;
@@ -372,12 +374,17 @@ esp_err_t network_connect_sta(const char *ssid, const char *password)
     } else {
         s_skip_next_disconnect = false;
     }
-    if ((e = ensure_sta_mode()) != ESP_OK) return e;
-    if ((e = apply_sta_config(&cfg)) != ESP_OK) return e;
+    s_suspend_sta_start=true;
+    e=ensure_sta_mode();
+    if(e==ESP_OK)e=apply_sta_config(&cfg);
+    s_suspend_sta_start=false;
+    if(e!=ESP_OK)return e;
     s_state.sta_connected = false;
     s_state.sta_ip[0] = 0;
     s_connect_pending=false;
+    s_manual_connect=true;
     e = connect_sta_now();
+    s_manual_connect=false;
     refresh_state();
     return e;
 }
@@ -391,8 +398,6 @@ esp_err_t network_forget_sta(void)
     s_skip_next_disconnect = false;
     s_connect_pending=false;
     (void)esp_wifi_disconnect();
-    prisma_settings_t cfg = {0};
-    settings_get(&cfg);
     /* Return to AP-only to prevent background channel changes. */
     e=esp_wifi_set_mode(WIFI_MODE_AP);
     if(e!=ESP_OK)return e;
