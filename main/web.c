@@ -64,7 +64,7 @@ static esp_err_t status_get(httpd_req_t*r){
  "\"device\":{\"model\":\"ESP32-S3\",\"cores\":%d,\"revision\":%d,\"flash_bytes\":%u,\"flash_read_ok\":%s,\"wifi_sta_mac\":\"%s\",\"wifi_ap_mac\":\"%s\"},"
  "\"memory\":{\"heap_free\":%u,\"heap_min\":%u,\"psram_total\":%u,\"psram_free\":%u},"
  "\"i2c\":{\"state\":\"%s\",\"port\":0,\"sda\":48,\"scl\":47,\"clock_hz\":400000},"
- "\"storage\":{\"shared_spi_ready\":%s,\"internal\":{\"mounted\":%s,\"fs\":\"%s\",\"total_bytes\":%llu,\"used_bytes\":%llu,\"free_bytes\":%llu,\"max_open_files\":%u,\"error\":\"%s\"},\"sd\":{\"mounted\":%s,\"fs\":\"%s\",\"total_bytes\":%llu,\"used_bytes\":%llu,\"free_bytes\":%llu,\"max_open_files\":%u,\"error\":\"%s\"},\"file_count_quota\":false,\"ota0\":%s,\"ota1\":%s},"
+ "\"storage\":{\"shared_spi_ready\":%s,\"internal\":{\"mounted\":%s,\"fs\":\"%s\",\"total_bytes\":%llu,\"used_bytes\":%llu,\"free_bytes\":%llu,\"max_open_files\":%u,\"error\":\"%s\",\"boot_init\":\"%s\"},\"sd\":{\"mounted\":%s,\"fs\":\"%s\",\"total_bytes\":%llu,\"used_bytes\":%llu,\"free_bytes\":%llu,\"max_open_files\":%u,\"error\":\"%s\"},\"file_count_quota\":false,\"ota0\":%s,\"ota1\":%s},"
  "\"display\":{\"available\":true,\"enabled\":%s,\"state\":\"%s\",\"controller\":\"ST7789T3\",\"width\":240,\"height\":320},"
  "\"softap\":{\"available\":true,\"enabled\":%s,\"open\":%s,\"security\":\"%s\",\"ssid\":\"%s\",\"ip\":\"%s\",\"clients\":%u,\"channel\":%u,\"max_clients\":%u,\"running\":%s,\"connect_count\":%u,\"disconnect_count\":%u,\"last_disconnect_reason\":%u},"
  "\"sta\":{\"available\":true,\"configured\":%s,\"connected\":%s,\"ssid\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"connect_attempts\":%u,\"disconnect_count\":%u,\"retry_scheduled\":%s,\"retry_in_ms\":%u,\"last_disconnect_reason\":%u,\"last_connected_uptime_ms\":%llu,\"connecting\":%s,\"mode\":\"%s\"},"
@@ -75,7 +75,7 @@ static esp_err_t status_get(httpd_req_t*r){
  "\"stream\":{\"state\":\"deferred\"},\"esp_now\":{\"state\":\"planned\"},\"ble\":{\"state\":\"planned\"}}",
  PRISMA_PRODUCT,PRISMA_APPLICATION,PRISMA_VENDOR,PRISMA_FIRMWARE_VERSION,PRISMA_BUILD_ID,fn,host,d.url,(unsigned)cfg.schema,(unsigned long long)(esp_timer_get_time()/1000000),reset_name(esp_reset_reason()),healthy?"ready":"degraded",
  chip.cores,chip.revision,(unsigned)flash,flash_ok?"true":"false",sta_mac,ap_mac,(unsigned)heap,(unsigned)heap_min,(unsigned)ps_total,(unsigned)ps_free,board_i2c_ready()?"ready":"error",st.shared_spi_ready?"true":"false",
- st.internal.mounted?"true":"false",st.internal.fs,(unsigned long long)st.internal.total_bytes,(unsigned long long)st.internal.used_bytes,(unsigned long long)st.internal.free_bytes,st.internal.max_open_files,ie,
+ st.internal.mounted?"true":"false",st.internal.fs,(unsigned long long)st.internal.total_bytes,(unsigned long long)st.internal.used_bytes,(unsigned long long)st.internal.free_bytes,st.internal.max_open_files,ie,st.internal_boot_status,
  st.sd.mounted?"true":"false",st.sd.fs,(unsigned long long)st.sd.total_bytes,(unsigned long long)st.sd.used_bytes,(unsigned long long)st.sd.free_bytes,st.sd.max_open_files,se,ota0?"true":"false",ota1?"true":"false",
  display_ready()?"true":"false",display_ready()?"ready":"error",net.ready?"true":"false",net.open?"true":"false",net.open?"OPEN":"WPA2-PSK",ap,net.ip,net.clients,net.channel,net.max_clients,net.ap_running?"true":"false",
  (unsigned)net.ap_connect_count,(unsigned)net.ap_disconnect_count,
