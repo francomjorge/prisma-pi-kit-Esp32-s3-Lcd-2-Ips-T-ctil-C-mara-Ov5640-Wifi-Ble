@@ -43,6 +43,11 @@ typedef struct {
     uint32_t sta_retry_in_ms;
     uint16_t sta_last_disconnect_reason;
     bool sta_retry_scheduled;
+    bool sta_connecting;
+    bool ap_running;
+    uint32_t ap_connect_count;
+    uint32_t ap_disconnect_count;
+    uint16_t ap_last_disconnect_reason;
     uint64_t sta_last_connected_uptime_ms;
 } network_state_t;
 
