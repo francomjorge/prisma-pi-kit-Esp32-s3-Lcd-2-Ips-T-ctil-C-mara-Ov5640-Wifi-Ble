@@ -66,8 +66,8 @@ static esp_err_t status_get(httpd_req_t*r){
  "\"i2c\":{\"state\":\"%s\",\"port\":0,\"sda\":48,\"scl\":47,\"clock_hz\":400000},"
  "\"storage\":{\"shared_spi_ready\":%s,\"internal\":{\"mounted\":%s,\"fs\":\"%s\",\"total_bytes\":%llu,\"used_bytes\":%llu,\"free_bytes\":%llu,\"max_open_files\":%u,\"error\":\"%s\"},\"sd\":{\"mounted\":%s,\"fs\":\"%s\",\"total_bytes\":%llu,\"used_bytes\":%llu,\"free_bytes\":%llu,\"max_open_files\":%u,\"error\":\"%s\"},\"file_count_quota\":false,\"ota0\":%s,\"ota1\":%s},"
  "\"display\":{\"available\":true,\"enabled\":%s,\"state\":\"%s\",\"controller\":\"ST7789T3\",\"width\":240,\"height\":320},"
- "\"softap\":{\"available\":true,\"enabled\":%s,\"open\":%s,\"security\":\"%s\",\"ssid\":\"%s\",\"ip\":\"%s\",\"clients\":%u,\"channel\":%u,\"max_clients\":%u},"
- "\"sta\":{\"available\":true,\"configured\":%s,\"connected\":%s,\"ssid\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"connect_attempts\":%u,\"disconnect_count\":%u,\"retry_scheduled\":%s,\"retry_in_ms\":%u,\"last_disconnect_reason\":%u,\"last_connected_uptime_ms\":%llu},"
+ "\"softap\":{\"available\":true,\"enabled\":%s,\"open\":%s,\"security\":\"%s\",\"ssid\":\"%s\",\"ip\":\"%s\",\"clients\":%u,\"channel\":%u,\"max_clients\":%u,\"running\":%s,\"connect_count\":%u,\"disconnect_count\":%u,\"last_disconnect_reason\":%u},"
+ "\"sta\":{\"available\":true,\"configured\":%s,\"connected\":%s,\"ssid\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"connect_attempts\":%u,\"disconnect_count\":%u,\"retry_scheduled\":%s,\"retry_in_ms\":%u,\"last_disconnect_reason\":%u,\"last_connected_uptime_ms\":%llu,\"connecting\":%s,\"mode\":\"%s\"},"
  "\"mdns\":{\"state\":\"%s\",\"url\":\"%s\"},"
  "\"touch\":{\"state\":\"%s\",\"controller\":\"%s\",\"address\":%u,\"chip_id_hex\":\"0x%02X\",\"error\":\"%s\"},"
  "\"imu\":{\"state\":\"%s\",\"controller\":\"%s\",\"address\":%u,\"address_hex\":\"0x%02X\",\"who_am_i\":%u,\"who_am_i_hex\":\"0x%02X\",\"revision\":%u,\"revision_hex\":\"0x%02X\",\"sampling_enabled\":false,\"error\":\"%s\"},"
@@ -77,11 +77,14 @@ static esp_err_t status_get(httpd_req_t*r){
  chip.cores,chip.revision,(unsigned)flash,flash_ok?"true":"false",sta_mac,ap_mac,(unsigned)heap,(unsigned)heap_min,(unsigned)ps_total,(unsigned)ps_free,board_i2c_ready()?"ready":"error",st.shared_spi_ready?"true":"false",
  st.internal.mounted?"true":"false",st.internal.fs,(unsigned long long)st.internal.total_bytes,(unsigned long long)st.internal.used_bytes,(unsigned long long)st.internal.free_bytes,st.internal.max_open_files,ie,
  st.sd.mounted?"true":"false",st.sd.fs,(unsigned long long)st.sd.total_bytes,(unsigned long long)st.sd.used_bytes,(unsigned long long)st.sd.free_bytes,st.sd.max_open_files,se,ota0?"true":"false",ota1?"true":"false",
- display_ready()?"true":"false",display_ready()?"ready":"error",net.ready?"true":"false",net.open?"true":"false",net.open?"OPEN":"WPA2-PSK",ap,net.ip,net.clients,net.channel,net.max_clients,
+ display_ready()?"true":"false",display_ready()?"ready":"error",net.ready?"true":"false",net.open?"true":"false",net.open?"OPEN":"WPA2-PSK",ap,net.ip,net.clients,net.channel,net.max_clients,net.ap_running?"true":"false",
+ (unsigned)net.ap_connect_count,(unsigned)net.ap_disconnect_count,
+ (unsigned)net.ap_last_disconnect_reason,
  net.sta_configured?"true":"false",net.sta_connected?"true":"false",sta,net.sta_ip,net.sta_rssi,
  (unsigned)net.sta_connect_attempts,(unsigned)net.sta_disconnect_count,net.sta_retry_scheduled?"true":"false",
  (unsigned)net.sta_retry_in_ms,(unsigned)net.sta_last_disconnect_reason,
  (unsigned long long)net.sta_last_connected_uptime_ms,
+ net.sta_connecting?"true":"false",net.mode,
  d.ready?"ready":"error",d.url,
  touch.ready?"ready":"error",touch.controller,touch.address,touch.chip_id,touch.error,
  imu.ready?"ready":"error",imu.controller,imu.address,imu.address,imu.who_am_i,imu.who_am_i,imu.revision,imu.revision,imu_e,
