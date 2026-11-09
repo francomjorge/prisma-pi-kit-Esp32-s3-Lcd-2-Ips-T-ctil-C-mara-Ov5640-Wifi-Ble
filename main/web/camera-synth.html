@@ -18,7 +18,7 @@
 <header class="site-header"><div><a class="brand" href="/">PRISMA<span class="dashp">-PI</span></a><span class="product-tag">CAMERA SYNTH</span></div>
 <nav class="topnav"><a href="/">HOME</a><a class="active" href="/camera-synth">CAMERA SYNTH</a><a href="/admin">ADMIN</a></nav></header>
 <main class="shell"><section style="padding:35px 0 8px">
-<div class="eyebrow">OPERATIONAL · CS012B</div><h1>PHOTO</h1>
+<div class="eyebrow">OPERATIONAL · CS012F</div><h1>PHOTO</h1>
 <p class="note">La misma cámara OV5640 que controlás desde la pantalla táctil. No se inicia streaming ni se hacen fotos al abrir esta página.</p>
 </section>
 <nav id="modules" class="module-tabs" aria-label="Camera Synth modules"></nav>
@@ -56,7 +56,7 @@
 <div class="controls"><a id="download" download="prisma-photo.jpg" hidden>DOWNLOAD PHOTO</a></div>
 <section><h2>PHOTOS GUARDADAS EN ESP32</h2><p class="note">Capturas tomadas desde LCD y navegador en INTERNAL/photos. Cada TAKE PHOTO descarta el frame anterior y solicita uno nuevo.</p><div class="controls"><button id="reloadFiles" type="button">REFRESH PHOTOS</button></div><p id="filesMessage" class="note"></p><div id="gallery" class="grid"></div></section><p class="note">CAMERA OFF libera driver y buffers, sin iniciar streaming.</p>
 </section><section class="workarea" id="futureModule" hidden><h2 id="moduleTitle"></h2><p id="moduleDesc" class="note"></p><p class="note">NO IMPLEMENTADO EN ESTE BUILD. Los controles quedan deshabilitados hasta validar la etapa correspondiente.</p></section></main>
-<footer class="footer"><div class="shell">PRISMA-PI CAMERA SYNTH · CS012B</div></footer>
+<footer class="footer"><div class="shell">PRISMA-PI CAMERA SYNTH · CS012F</div></footer>
 <script>
 const $=id=>document.getElementById(id);
 let runtime=null,busy=false,photoUrl=null;
